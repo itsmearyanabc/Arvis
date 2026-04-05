@@ -1,0 +1,28 @@
+# Arvis 0.0.1 - Git Ignore
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.idea/
+.vscode/
+
+# Audio / Training Data
+arvis_data/
+*.mp3
+*.wav
+*.m4a
+*.json
+!arvis_data/accounts.json.template

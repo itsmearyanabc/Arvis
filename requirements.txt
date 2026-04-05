@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+rich
+prompt_toolkit
+pydantic
+aiohttp
+python_dotenv
+psutil
+pygame
+playwright
+playwright-stealth
+pyautogui
+ollama
+faster-whisper
+speechrecognition
+pyaudio
+edge-tts
