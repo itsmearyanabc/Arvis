@@ -60,13 +60,8 @@ Scoreboard for the "Candidate" version. If the candidate achieves >95% accuracy 
 #### [NEW] `interface/cli_upgrade_prompt.py`
 A high-visual-impact screen (Iron Man style) that shows the "Diff" between Version 1 and Version 2 and asks for your final permission to "Initiate System Overwrite."
 
-## 4. Open Questions
 
-> [!IMPORTANT]
-> 1. **OS Preference**: Since this will be a 24/7 device, would you prefer the device to run **Linux (Ubuntu/headless)** for maximum stability, or **Windows (with WSL2)**?
-> 2. **Sandbox Limits**: Should Arvis have access to the internet *inside* the sandbox while it is testing its new versions, or should it be "air-gapped" during self-improvement?
-
-## 5. Verification Plan
+## 4. Verification Plan
 
 ### Automated Tests
 *   **Sandbox Isolation**: Confirm that code run in the Docker container cannot delete files in the "PROD" directory without permission.
