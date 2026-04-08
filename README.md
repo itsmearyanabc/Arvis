@@ -68,6 +68,6 @@ A high-visual-impact screen (Iron Man style) that shows the "Diff" between Versi
 *   **Harvester Logic**: Verify that Arvis can successfully fetch and parse a response from a "Teacher AI" (like Opus).
 
 ### Manual Verification
-*   **Voice/Command**: Ask Arvis to "Improve your own help command," wait for it to test the code in the sandbox, and verify you get an update prompt.
+*   **Voice/Command**: Ask Arvis to "Improve your own help command," wait for it to test the code in the sandbox, and verify you get an update prompt. 
 
 
