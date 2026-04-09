@@ -1,4 +1,4 @@
-# Arvis 0.0.1 - Product Requirements Document (PRD) & Implementation Plan
+# Arvis 0.0.1 - Product Requirements Document (PRD) & Implementation Plan.
 
 This document serves as the master blueprint for **Arvis**, a sovereign, self-evolving AI companion. It details the functional requirements, hardware costs, and the "Self-Correction" architecture required for 24/7 autonomy.
 
