@@ -4,7 +4,7 @@ This document serves as the master blueprint for **Arvis**, a sovereign, self-ev
 
 ---
 
-## 1. Product Requirements Document (PRD)
+## 1. Product Requirements Document (PRD).
 
 ### 1.1 Objective
 To create a "Jarvis-level" companion that possesses the reasoning capability of Claude 3.5 Opus, operates in an unconstrained (unaligned) manner, and autonomously improves its own code and logic patterns over time.
