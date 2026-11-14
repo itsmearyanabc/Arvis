@@ -15,7 +15,7 @@ A lead with no verifiable email is parked, not guessed at.
   1. Business website: /contact, /about, /team, footer, `mailto:` links, schema.org JSON-LD
      (`founder`, `employee`), WHOIS is **not** used (privacy-redacted and off-limits).
   2. Google Maps listing fields already scraped (owner replies to reviews often sign a name).
-  3. Public web search (Brave API → SearXNG fallback): `"<business name>" owner`, `"<business
+  3. Public web search (Brave Search API, free tier): `"<business name>" owner`, `"<business
      name>" founder`, `site:<domain> @<domain>`. Public result snippets only.
   4. Hunter.io free tier: domain search (25/mo) — only for leads with `ticket_score ≥ 70`.
 - Pattern guess: if a named person is known and the domain pattern is visible from another
@@ -35,7 +35,7 @@ A lead with no verifiable email is parked, not guessed at.
 5. Record `runs_meta_ads`, `instagram_url`, `linkedin_url` (URLs only, for Aryan, never visited by
    ARVIS with an account).
 
-## Outputs (Contacts tab + Leads updates) — see `sheets/schema.md`.
+## Outputs (Contacts table + Leads updates) — see `supabase/schema.sql`.
 
 ## Rate limits
 - ≤ 30 leads/run, ≤ 10 search queries per lead, ≤ 3 Reacher checks per lead.

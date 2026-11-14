@@ -1,0 +1,41 @@
+# Nightly Google Maps scrape on a GitHub runner (free). Zero load on the VPS.
+# The brain dispatches this via the GitHub API (workflow_dispatch) or it runs on schedule.
+name: scrape
+on:
+  schedule:
+    - cron: "30 20 * * *"        # 02:00 IST
+  workflow_dispatch:
+    inputs:
+      market_id: { description: "market to scrape (blank = oldest active)", required: false, default: "" }
+      max_results: { description: "max results per query", required: false, default: "60" }
+concurrency: { group: scrape, cancel-in-progress: false }
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r workers/requirements.txt
+      - name: Build queries from active markets
+        id: q
+        run: |
+          python -I workers/scrape/make_queries.py "${{ github.event.inputs.market_id }}" > queries.txt 2> market.txt
+          echo "market_id=$(cat market.txt)" >> "$GITHUB_OUTPUT"
+          echo "run_id=$(python -I -c 'import sys,os; sys.path.insert(0,"workers"); from common.db import start_run; print(start_run("scrape", {"market_id": open("market.txt").read().strip()}))')" >> "$GITHUB_OUTPUT"
+          cat queries.txt
+      - name: Run gosom/google-maps-scraper
+        run: |
+          docker run --rm -v "$PWD:/work" gosom/google-maps-scraper:latest \
+            -input /work/queries.txt -results /work/results.csv \
+            -c 2 -depth 1 -exit-on-inactivity 3m -lang en
+          wc -l results.csv
+      - name: Upload to Supabase
+        run: python -I workers/scrape/upload.py results.csv "${{ steps.q.outputs.market_id }}" "${{ steps.q.outputs.run_id }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: results-${{ github.run_id }}, path: results.csv, retention-days: 7 }

@@ -13,7 +13,7 @@ Aryan has approved, personalised only with facts ARVIS actually measured. Nothin
 ## Inputs
 - **Leads** with `status=verified`, `contact_quality` in (`named`, `generic`), batch ≤ 25/run,
   highest `ticket_score` first, round-robin across active markets.
-- **Templates** tab: rows with `approved=TRUE`. Each template has `step` (1, 2, 3), `subject`,
+- **Templates** table: rows with `approved=TRUE`. Each template has `step` (1, 2, 3), `subject`,
   `body` with placeholders `{first_name|there}`, `{business}`, `{city}`, `{top_issue}`,
   `{audit_summary}`, `{proof_point}`, `{sender_name}`, `{booking_link}`, `{postal_address}`,
   `{unsubscribe_link}`.
@@ -41,7 +41,7 @@ Aryan has approved, personalised only with facts ARVIS actually measured. Nothin
 - Missing postal address or unsubscribe line.
 - From-domain is armedias.com or the bare armedias.tech root (must be `SEND_DOMAIN`).
 
-## Outputs (Sequences tab) — see `sheets/schema.md`.
+## Outputs (Sequences table) — see `supabase/schema.sql`.
 
 ## Rate limits
 - ≤ 25 drafts per run, one run per day. Drafts older than 14 days without approval expire

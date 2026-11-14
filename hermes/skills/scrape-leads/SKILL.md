@@ -1,56 +1,55 @@
 ---
 name: scrape-leads
-description: Scrape Google Maps business listings for an active market with the self-hosted gosom/google-maps-scraper, score them, and append new leads to the Leads sheet. Use nightly for every market with status=active, or when Aryan says "scrape <niche> in <city>".
+description: Dispatch the nightly Google Maps scrape (gosom/google-maps-scraper running in the GitHub Actions "scrape" workflow), watch it, and report the new leads it wrote to Supabase. Use nightly for every market with status=active, or when Aryan says "scrape <niche> in <city>".
 ---
 
 # scrape-leads
 
 ## Purpose
 The most important department. Builds the raw B2B lead pool, slowly and cleanly, from public
-Google Maps listings only.
+Google Maps listings only. The browser work runs on a GitHub Actions runner
+(`.github/workflows/scrape.yml` → `workers/scrape/`), never on the VPS.
 
 ## Inputs
 - **Markets** rows with `status=active` (or an explicit `city + niche` from Aryan).
-- `SCRAPER_URL` (gosom web API). Query template: `"<niche> in <city>, <country>"` plus 2–4
-  synonym queries per niche (e.g. "dentist", "dental clinic", "orthodontist").
+- GitHub API (`GITHUB_TOKEN`, `GITHUB_REPO`): `POST /repos/{repo}/actions/workflows/scrape.yml/dispatches`
+  with `inputs.market_id`. The worker builds `"<niche> in <city>, <country>"` plus 2–4 synonyms.
 - Dedup key: Google `place_id`; fallback `normalized(name)+normalized(phone)`.
 
 ## Procedure
 1. Pick the active market with the oldest `last_scraped_at`.
-2. Start the scraper container (`docker compose --profile scrape up -d scraper`, only inside
-   the 02:00–05:00 window), submit ONE job (`-c 1`, one headless browser), depth ≤ 2, max
-   results per query ≤ 60.
-3. Poll the job with exponential backoff (30 s → 5 min). Stop the container when done or at 05:00.
-4. For each result: skip if `place_id` exists in **Leads**. Skip if it looks like a consumer /
-   private person listing (no business category, residential address).
-5. Compute:
+2. Dispatch the `scrape` workflow for that market (the schedule also fires it at 02:00 IST;
+   dispatch only if no run happened in the last 20 h).
+3. Poll the run via the GitHub API with exponential backoff (1 → 10 min); on failure read the
+   `worker_runs` row / run log and report.
+4. The worker skips existing `place_id`s and consumer / private-person listings (no business
+   category). Nothing else is filtered at this stage.
+5. The worker computes:
    - `ticket_score` 0–100: reviews ≥50 (+25), rating ≥4.3 (+15), has website (+10),
      website issues flagged later by `audit-website` (+ up to 30), runs Meta ads
      (checked later by `enrich-verify`, +20).
    - `fit_score` 0–100: niche match, city match, business size signals, not a chain/franchise.
    - `contact_quality`: `named` if owner name found in listing/site, `generic` if only
      info@/contact form, `none`.
-6. Append to **Leads** with `source=google_maps`, `status=new`, store `instagram_url` /
-   `linkedin_url` / `facebook_url` if present on the listing (for Aryan to visit manually, never
-   for automation).
-7. Update `Markets.last_scraped_at`, `Markets.businesses_found`.
-8. Log counts for `daily-report`.
+6. The worker upserts into `leads` with `source=google_maps`, `status=new`, storing
+   `instagram_url` / `linkedin_url` / `facebook_url` if present (for Aryan to visit manually,
+   never for automation), and updates `markets.last_scraped_at` / `businesses_found`.
+7. The brain reads the `worker_runs` row and logs counts for `daily-report`.
 
-## Outputs (Leads tab)
-See `sheets/schema.md` → Leads. Required on insert: `lead_id, place_id, business_name, niche,
+## Outputs (Leads table)
+See `supabase/schema.sql` → Leads. Required on insert: `lead_id, place_id, business_name, niche,
 city, country, address, phone, website, rating, review_count, maps_url, source, fit_score,
 ticket_score, contact_quality, status=new, scraped_at`.
 
 ## Rate limits
-- One job per night, ≤ 4 queries, ≤ 60 results per query, 1 browser, window 02:00–05:00
-  local. The box is shared with armedias.com; never more.
-- Random 20–90 s gap between queries inside a job. Back off ×2 on any error, give up after 5.
-- Target ≤ 150 new leads/night. Quality over quantity; we only need ~50 sends/day.
+- One workflow run per night, ≤ 4 queries, ≤ 60 results per query, 2 browsers on the runner.
+  GitHub free minutes: ~2,000/mo on a private repo; a run is ≤ 90 min, so ≤ 1/night.
+- Back off ×2 on any error, give up after 5. Target ≤ 150 new leads/night.
 
 ## Never do
 - Never scrape LinkedIn, Instagram, Facebook, Yelp-logged-in or any site behind a login.
 - Never scrape residential / consumer listings; B2B only.
-- Never run the scraper outside the nightly window (shared box) unless Aryan asks for a one-off.
-- Never run more than one browser.
-- Never write to armedias.com's Supabase; Google Sheets only (ARVIS's own Supabase later).
+- Never run a browser or the scraper on the VPS. Dispatch only.
+- Never use proxies, CAPTCHA solvers or stealth settings; if Google blocks the runner, stop and report.
+- Never write to armedias.com's Supabase; Supabase only (ARVIS's own Supabase later).
 - Never re-scrape a market more than once per 14 days.

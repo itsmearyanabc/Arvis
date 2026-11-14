@@ -31,7 +31,7 @@ profile data, on any account, ever. This is a hard rule for every ARVIS skill.
 2. **The business's own website**: contact / about / team pages, `mailto:` links, schema.org
    markup. If the owner publishes their name and email on their business site, it is a business
    contact.
-3. **Public web search** (Brave Search API free tier, or self-hosted SearXNG): `"<business>"
+3. **Public web search** (Brave Search API free tier): `"<business>"
    owner`, `site:<domain> @<domain>`. Only result snippets and the public pages they point to.
 4. **Hunter.io free tier** for domain-pattern lookups on high-ticket leads only.
 5. **Verification** with self-hosted Reacher so we only ever email addresses that exist.

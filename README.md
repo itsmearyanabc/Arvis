@@ -5,115 +5,119 @@ market research, lead scraping, website audits, email enrichment and verificatio
 personalised cold email with follow-ups, reply sorting, meeting booking, website
 monitoring and daily/weekly Telegram reports. Aryan only attends meetings and closes.
 
-It is built on the open-source **Hermes Agent** by Nous Research
-(<https://hermes-agent.nousresearch.com/docs>): Hermes provides the LLM loop, the
-Telegram gateway, cron scheduling and the skills format. Everything ARVIS knows how
-to do lives in `hermes/skills/*/SKILL.md` (agentskills.io format).
+The brain is **Hermes Agent** by Nous Research (<https://hermes-agent.nousresearch.com/docs>):
+LLM loop, Telegram gateway, cron, skills. Everything ARVIS knows how to do lives in
+`hermes/skills/*/SKILL.md`. Heavy work is pushed off the VPS to free, isolated workers.
 
-## Architecture
+## Architecture: multi-server, one brain (decided 2026-11-15)
 
 ```
-Existing Hostinger VPS (Ubuntu 24.04, 1 vCPU / 3.8 GiB, no swap)  ← shared, decided 2026-11-15
-├── armedias.com ........ existing site under PM2 (root) — NEVER touched, never loaded by ARVIS
-├── camel, trezuh ....... other PM2 apps; trezuh paused by Aryan to free RAM
-├── nginx ............... existing; ARVIS only ADDS a separate server block
-│                          (docker/nginx/arvis.conf) for arvis.armedias.tech
-├── docker .............. already installed; ARVIS containers get cgroup-parent arvis.slice
-└── arvis (separate Linux user, home /opt/arvis)
-    ├── systemd slice "arvis.slice" ... CPUQuota=50%, MemoryMax=1.5G, 2G swapfile:
-    │                                   ARVIS in total can never starve armedias.com
-    ├── Hermes Agent .................. gateway (Telegram bot "ARVIS") + cron + skills
-    │       LLM: Gemini free tier → Groq / Cerebras / OpenRouter :free fallbacks
-    └── Docker (docker/docker-compose.yml, all ports bound to 127.0.0.1)
-        ├── reacher ....... reacherhq/check-if-email-exists (email verification), always on
-        ├── searxng ....... self-hosted meta-search (public web lookup, free), always on
-        └── scraper ....... gosom/google-maps-scraper, 1 browser, started 02:00–05:00 only
+                         ┌──────────────── Telegram (bot "ARVIS") ────────────────┐
+                         │  Aryan commands, approves drafts, gets reports/alerts  │
+                         └───────────────────────┬────────────────────────────────┘
+                                                 │
+ Hostinger VPS (1 vCPU / 3.8 GiB) — shared with armedias.com (PM2) — NEVER touched by ARVIS
+ ┌───────────────────────────────────────────────┴────────────────────────────────┐
+ │ user `arvis`, /opt/arvis, systemd slice CPUQuota=40% MemoryMax=1G, 2G swap     │
+ │   BRAIN: Hermes gateway + cron + skills (idle < 300 MB, ~0 CPU)                 │
+ │     - decides what to do, dispatches workers, drafts emails, sends via Zoho    │
+ │     - never scrapes, never runs a browser, never serves a website              │
+ │   Docker: reacher (email verification, 256 MB) — only container on the box    │
+ └────────────┬───────────────────────────┬──────────────────────┬────────────────┘
+              │ dispatch (GitHub API)     │ read/write            │ SMTP/IMAP
+              ▼                           ▼                       ▼
+ GitHub Actions (free)          Supabase free tier, Mumbai      Zoho Mail
+   nightly workers:               ARVIS's OWN project             mail.armedias.tech
+   - scrape  (gosom/google-       tables: markets, leads,         (SPF/DKIM/DMARC,
+     maps-scraper in a runner)    audits, contacts, templates,    warm-up 2–3 wks)
+   - audit   (site checks, PSI)   sequences, replies, unsubs,
+   - enrich  (public web search)  bookings, mailboxes, monitors
+   write results → Supabase          ▲
+                                     │ reads (anon key + Aryan login)
+ Vercel (free)                       │
+   dashboard  arvis.armedias.tech ───┘   lead table, approvals, funnel, templates
+   API routes: /unsubscribe, /webhooks/calcom
+   armedias.com/admin gets only a LINK here (no change to that codebase)
 
-Off-box (free, because the box is shared):
-  UptimeRobot ..... monitoring armedias.com + clients from outside (Uptime Kuma kept in compose, unused)
-  Cal.com hosted .. booking at book.armedias.tech via CNAME (self-host does not fit 3.8 GiB)
-
-Data flow
-  Markets ─▶ scrape ─▶ Google Sheets (Leads) ─▶ audit + enrich/verify ─▶ draft (approval gate)
-         ─▶ send sequence (mail.armedias.tech, Zoho) ─▶ inbox triage ─▶ booking brief
-  Google Sheets is the system of record first; later a one-way push into ARVIS's own
-  Supabase project (lead dashboard). ARVIS never has direct DB access to armedias.com's Supabase.
+ Off-box services (free): UptimeRobot (monitoring armedias.com + clients from outside,
+   alerts → Telegram) · Cal.com hosted (book.armedias.tech via CNAME) · Brave Search API ·
+   Hunter.io free · Gemini / Groq / OpenRouter :free LLMs
+ Optional later: Render (single account) or Oracle Always-Free VM for a long-running worker
+   if a job ever outgrows a GitHub Actions run.
 ```
 
-Control panel: the Telegram bot **ARVIS**. Aryan tells it which country / city / niche to
-work; ARVIS can also research and rank less-saturated markets. Every day it reports
-scraped / verified / sent / replied / booked (reply and booking rate, no open-rate pixels).
+**Why this split.** The VPS does only what must be stateful and always-on (Telegram, cron,
+sending with pacing). Everything that burns CPU (headless Chrome, audits, search) runs on
+GitHub's machines for ~1 hour a night and disappears. The database and dashboard are managed
+services close to Aryan (Mumbai) and on a global edge. armedias.com never shares a browser,
+a disk or a public port with ARVIS, and a compromised worker cannot reach the VPS.
 
-## Hard rules (apply to every skill, every day)
+## Hard rules (apply to every skill, every worker, every day)
 
 **Legal / reputation**
 - Strictly legal. Nothing that could harm the AR Medias name.
 - No LinkedIn scraping or automation. No logged-in Instagram automation. Not even with
-  separate accounts. See `docs/instagram-and-linkedin.md`.
+  separate accounts. No CAPTCHA solving, no proxies, no "stealth" browsers, no bot-detection
+  evasion of any kind. See `docs/instagram-and-linkedin.md`.
+- One account per service, used within its terms. No multi-account free-tier stacking.
 - Email lookup only from: the business's own public website, Google Maps listings, public
-  search (Brave Search API free tier or self-hosted SearXNG), Hunter.io free tier.
-  Verified with self-hosted Reacher. Never bought lists, never scraped social profiles.
+  search (Brave Search API free tier), Hunter.io free tier. Verified with self-hosted Reacher.
 - B2B targets only. Never consumer / personal addresses.
 - CAN-SPAM / CASL compliant: real postal address in every email, working unsubscribe,
   honest subject and from-name, unsubscribes honoured immediately and forever.
-- Cold email goes out from the subdomain **mail.armedias.tech** (Aryan's call, 2026-11-15)
-  with Zoho mailboxes, its own SPF/DKIM/DMARC and a 2–3 week warm-up. A subdomain keeps most
-  reputation damage off the root domain. **Never** from armedias.com, and never from the bare
-  armedias.tech root where the dashboard and booking page live.
+- Cold email goes out from **mail.armedias.tech** (own SPF/DKIM/DMARC, 2–3 week warm-up).
+  **Never** from armedias.com, never from the bare armedias.tech root.
 
 **Quality over quantity**
 - Max **50 emails/day total** at first, grown slowly and only when reply rate holds.
-- Every lead gets `fit_score`, `ticket_score` (review count/rating, runs ads per Meta Ad
-  Library, bad/slow/no-SSL site = bigger project) and `contact_quality` (named / generic / none).
-- Prefer named decision-makers (`john@` over `info@`, owner phone from Google Maps).
+- Every lead gets `fit_score`, `ticket_score` (reviews, rating, runs ads, site problems)
+  and `contact_quality` (named / generic / none). Named decision-makers first.
 
 **Copy rules (AR Medias house rules)**
 - Never state team size, hourly rates or minimum project size. Pricing is custom per client.
 - Templates are written or approved by Aryan. `approved_by_aryan` must be TRUE before any
   send until he lifts the gate.
 
-**Pacing**
-- Everything is paced: random gaps, exponential backoff, small nightly batches.
-  Continuous but slow. Nothing gets banned.
+**Pacing**: random gaps, exponential backoff, small nightly batches. Continuous but slow.
 
 **Infrastructure**
-- armedias.com (PM2) is never touched, restarted or loaded. SEO and responsiveness must not
-  drop. ARVIS shares the box but is hard-capped at 50% CPU / 1.5 GiB by `arvis.slice`, heavy
-  jobs run only 02:00–05:00, and `armedias.com/admin` later gets only a link to the dashboard.
-- ARVIS runs as user `arvis` in `/opt/arvis` under `arvis.slice` caps.
-- Free API tiers everywhere. The only accepted costs: domains, mailboxes, and optionally
-  ~$10/mo of an OpenRouter paid model if free tiers rate-limit the 24/7 agent.
+- armedias.com (PM2) is never touched, restarted or loaded. The brain is tiny and capped.
+- Supabase: ARVIS's own project (Mumbai). Never the armedias.com project.
+- Free tiers everywhere; the only accepted costs are the Zoho mailbox and, if free LLMs
+  rate-limit, ~$10/mo of an OpenRouter paid model.
 - Aryan runs every VPS command himself. Claude never gets SSH access.
 
 ## Repository layout
 
 ```
-README.md                 this file
-.env.example              every key, where to get it free
-vps/01-create-user.sh     arvis user, /opt/arvis, systemd slice caps
-vps/02-install-docker.sh  official Docker repo, arvis in docker group
-vps/03-install-hermes.sh  Hermes install + Telegram gateway, as arvis
-docker/docker-compose.yml scraper, reacher, searxng, uptime-kuma, (calcom)
-docker/nginx/arvis.conf   separate server block for arvis./book.armedias.tech
-hermes/skills/*/SKILL.md  one skill per department
-hermes/cron.md            schedule for each skill
-sheets/schema.md          Google Sheets tabs and columns
+README.md                    this file
+.env.example                 every key, where to get it free
+vps/01-create-user.sh        arvis user, /opt/arvis, slice caps, swapfile
+vps/02-install-docker.sh     docker daemon.json (cgroup parent, log caps); docker already installed
+vps/03-install-hermes.sh     Hermes install + Telegram gateway, as arvis
+docker/docker-compose.yml    reacher only
+supabase/schema.sql          all tables (run once in the Supabase SQL editor)
+workers/                     Python workers run by GitHub Actions (scrape, audit, enrich)
+.github/workflows/           nightly schedules + manual dispatch for each worker
+hermes/skills/*/SKILL.md     one skill per department (the brain's playbooks)
+hermes/cron.md               schedule for each skill
+dashboard/                   Next.js app for Vercel (Phase 7); README with setup
+docs/dns.md                  every DNS record: arvis., book., mail. subdomains
 docs/instagram-and-linkedin.md  why no IG/LinkedIn automation, what we do instead
-data/                     local scratch, git-ignored
 ```
 
 ## Phase plan
 
 | Phase | What | Gate (Aryan's proof) |
 |---|---|---|
-| 0 | This scaffold | files committed |
-| 1 | Pause trezuh; run `vps/01`→`03`; BotFather bot; Hermes answers on Telegram | pasted outputs + Telegram screenshot |
-| 1b | In parallel: Zoho mailbox on mail.armedias.tech, SPF/DKIM/DMARC, start warm-up | DNS checks pass |
-| 2 | Docker scraper up; `scrape-leads` → Google Sheets; `daily-report` on Telegram | Sheet rows + daily report screenshot |
-| 3 | Warm-up finishes (2–3 weeks from 1b); mailboxes registered in the Mailboxes tab | warm-up tool report |
-| 4 | `audit-website`, `enrich-verify` (Reacher), Uptime Kuma, Cal.com on book.armedias.tech | Sheet rows, booking page loads |
-| 5 | `draft-email` with approval gate on Telegram | approved drafts in Sheet |
-| 6 | `send-sequence` live, 50/day cap, follow-ups, unsubscribe | first replies reported |
-| 7 | `inbox-triage`, `booking-brief`, Supabase push, arvis.armedias.tech dashboard | booked meeting with brief |
+| 0 | This scaffold, pushed to GitHub | branch on GitHub |
+| 1 | Supabase project (Mumbai) + schema; pause trezuh; `vps/01`→`03`; BotFather; Hermes answers on Telegram | pasted outputs + Telegram screenshot |
+| 1b | In parallel: Zoho mailbox on mail.armedias.tech, SPF/DKIM/DMARC, warm-up starts | DNS checks pass |
+| 2 | GitHub Actions `scrape` worker → Supabase; brain dispatches it; `daily-report` on Telegram | rows in Supabase + report screenshot |
+| 3 | `audit` + `enrich` workers, Reacher on VPS, UptimeRobot, Cal.com hosted on book. | rows + booking page loads |
+| 4 | `draft-email` with approval gate on Telegram | approved drafts in Supabase |
+| 5 | Warm-up done → `send-sequence` live, 50/day cap, follow-ups, unsubscribe endpoint | first replies reported |
+| 6 | `inbox-triage`, `booking-brief` | booked meeting with brief |
+| 7 | Vercel dashboard at arvis.armedias.tech, link from armedias.com/admin | dashboard screenshot |
 
 Each phase starts only after the previous one is confirmed by pasted output or screenshot.

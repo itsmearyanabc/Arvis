@@ -11,7 +11,7 @@ outside: UptimeRobot's free plan (50 monitors, 5-min checks) does the checking a
 alerts straight to the ARVIS Telegram bot; this skill creates monitors and reads stats.
 
 ## Inputs
-- UptimeRobot API (`UPTIMEROBOT_API_KEY`), monitors created once from the **Monitors** tab:
+- UptimeRobot API (`UPTIMEROBOT_API_KEY`), monitors created once from the **Monitors** table:
   `url, type (http|keyword|ping), interval_s (300 default), keyword, owner (us|client:<name>)`.
 - UptimeRobot's Telegram alert contact points at the ARVIS bot so alerts arrive even if Hermes
   is down.
@@ -27,7 +27,7 @@ alerts straight to the ARVIS Telegram bot; this skill creates monitors and reads
 4. Also record our own: `arvis.armedias.tech`, `book.armedias.tech`, the cold `SEND_DOMAIN`
    landing page, and the ARVIS VPS itself.
 
-## Outputs (Monitors tab)
+## Outputs (Monitors table)
 `monitor_id, monitor_ext_id, name, url, type, interval_s, owner, status, last_down_at,
 uptime_7d_pct, avg_response_ms, ssl_expires_at, created_at`
 

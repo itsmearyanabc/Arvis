@@ -1,14 +1,13 @@
 # ARVIS cron schedule (Hermes cron)
 
-Times are the VPS local time zone (check with `timedatectl`); the report should land at 08:30
-Aryan's time. Shared 1 vCPU box with armedias.com: heavy jobs (scraper, audits) run only in the
-02:00–06:30 window when the site is quietest, and the scraper container is started and stopped
-by its job so it holds no RAM during the day.
+Times are IST (set the VPS with `sudo timedatectl set-timezone Asia/Kolkata` if it is not).
+The brain on the VPS only *dispatches* heavy jobs; scraping and audits run on GitHub Actions
+runners (schedules in `.github/workflows/*.yml`, UTC). The VPS never runs a browser.
 
 | When | Skill | Notes |
 |---|---|---|
-| `0 2 * * *` | scrape-leads | nightly; `docker compose --profile scrape up -d scraper` → 1 job, 1 browser, ≤ 100 new leads → `stop scraper` by 05:00 |
-| `0 5 * * *` | audit-website | ≤ 40 sites, after scraping |
+| `0 2 * * *` | scrape-leads | GitHub Actions `scrape` fires on its own schedule (20:30 UTC = 02:00 IST); this job checks it ran, dispatches if not, reads counts |
+| `0 5 * * *` | audit-website | GitHub Actions `audit` fires 23:00 UTC = 04:30 IST; this job reads results, dispatches if missing |
 | `30 6 * * *` | enrich-verify | ≤ 30 leads; Reacher spaced 5–15 s |
 | `0 7 * * *` | draft-email | ≤ 25 drafts → Telegram "approve" digest |
 | `30 8 * * *` | daily-report | daily; Monday run also sends the weekly |
@@ -18,7 +17,7 @@ by its job so it holds no RAM during the day.
 | `0 18 * * *` | booking-brief (eve) | briefs for tomorrow's meetings |
 | `0 8 * * 1` | monitor-site | UptimeRobot (free, off-box) does the checking and alerts Telegram directly; this job only pulls weekly stats |
 | `0 9 * * 1` | market-research | weekly only if Aryan asked for "suggest markets"; otherwise on demand |
-| `0 3 * * 0` | housekeeping | expire drafts > 14 d, retry parked leads > 30 d, rotate logs, backup Sheet → `/opt/arvis/data/backups` |
+| `0 3 * * 0` | housekeeping | expire drafts > 14 d, retry parked leads > 30 d, rotate logs, export Supabase tables to CSV → `/opt/arvis/data/backups` |
 
 ## Rules
 - Every scheduled run adds a random 0–10 min jitter before starting.

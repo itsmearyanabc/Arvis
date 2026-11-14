@@ -4,7 +4,7 @@
 #
 # What it does:
 #   1. Installs Docker Engine + compose plugin from Docker's official apt repo
-#      (skips if docker is already installed).
+#      (SKIPPED on this box: the VPS report shows docker is already installed).
 #   2. Adds the `arvis` user to the `docker` group.
 #   3. Points Docker's default cgroup parent at arvis.slice so every container
 #      ARVIS starts is counted against the ARVIS CPU/RAM caps from 01.

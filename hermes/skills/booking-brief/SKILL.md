@@ -30,7 +30,7 @@ the exact email thread that got them there.
 4. After `start_at` + 2 h, ask Aryan on Telegram: `won / proposal / lost / no-show / reschedule`
    and store the answer in `Bookings.outcome`.
 
-## Outputs (Bookings tab) — see `sheets/schema.md`.
+## Outputs (Bookings table) — see `supabase/schema.sql`.
 
 ## Rate limits
 - Poll Cal.com ≤ every 15 min. One brief per booking per trigger.

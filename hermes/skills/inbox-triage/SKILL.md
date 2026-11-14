@@ -35,7 +35,7 @@ already answered.
    to Aryan the day before.
 7. Mark messages seen. Never delete.
 
-## Outputs (Replies tab)
+## Outputs (Replies table)
 `reply_id, sequence_id, lead_id, mailbox, from_email, received_at, category, reply_summary,
 suggested_action, telegram_alerted, handled_by_aryan, handled_at`
 
@@ -47,4 +47,4 @@ suggested_action, telegram_alerted, handled_by_aryan, handled_at`
 - Never ignore or "reinterpret" an unsubscribe; any plausible opt-out counts.
 - Never delete mail. Never move Aryan's personal/armedias.com mail; these mailboxes are the cold
   domain's only.
-- Never forward reply content anywhere except Aryan's Telegram and the Sheet.
+- Never forward reply content anywhere except Aryan's Telegram and Supabase.

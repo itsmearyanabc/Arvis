@@ -12,8 +12,8 @@ an average-ticket estimate and a one-line why.
 
 ## Inputs
 - From Aryan (Telegram): country, optional city/region, optional niche(s), optional "surprise me".
-- Tools: Brave Search API or SearXNG (`SEARXNG_URL`), Google Maps scraper API (`SCRAPER_URL`,
-  small probe runs of ≤20 results), public pages only.
+- Tools: Brave Search API (free tier), the GitHub Actions `scrape` workflow dispatched with
+  `max_results=20` for small probe runs, public pages only.
 
 ## Procedure
 1. Expand the request into ≤15 candidate `(city, niche)` pairs. Prefer niches with high
@@ -24,10 +24,10 @@ an average-ticket estimate and a one-line why.
    <city>") as the saturation proxy.
 3. Score: `opportunity = demand × ticket ÷ (1 + agency_saturation)`. Keep it simple, show the
    numbers, never pretend precision.
-4. Write rows to **Markets** (`sheets/schema.md`), status `proposed`.
+4. Write rows to **Markets** (`supabase/schema.sql`), status `proposed`.
 5. Reply on Telegram with the top 5 as a short table and ask which to activate.
 
-## Outputs (Markets tab)
+## Outputs (Markets table)
 `market_id, country, city, niche, businesses_found, pct_no_website, pct_high_ticket,
 agency_count, opportunity_score, rationale, status (proposed|active|paused|done), created_at`
 

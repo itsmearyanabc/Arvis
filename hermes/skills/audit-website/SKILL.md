@@ -1,6 +1,6 @@
 ---
 name: audit-website
-description: Audit a lead's public website (speed, mobile, SSL, SEO basics, broken pages, design age) to size the project and feed personalisation. Use for Leads with status=new and a website, or when Aryan says "audit <url>".
+description: Dispatch and read the nightly website audit (GitHub Actions "audit" workflow, workers/audit/audit.py) that checks speed, mobile, SSL, SEO basics and design age to size the project and feed personalisation. Use for leads with status=new, or when Aryan says "audit <url>".
 ---
 
 # audit-website
@@ -11,9 +11,10 @@ has no SSL") and raise `ticket_score` for leads whose site is a bigger job.
 
 ## Inputs
 - **Leads** rows with `status=new` and non-empty `website`, oldest first, batch ≤ 40/run.
-- Tools: plain HTTP fetch (one GET of the homepage + robots.txt + one inner page), Google
-  PageSpeed Insights API (free, no key needed at low volume, key optional), SSL check via
-  the HTTPS handshake. No headless browser on the shared VPS.
+- Runs in GitHub Actions (`.github/workflows/audit.yml`): plain HTTP fetch of the homepage,
+  Google PageSpeed Insights API (free), SSL via the HTTPS handshake. Nothing runs on the VPS;
+  the brain dispatches the workflow (or a single-URL variant for "audit <url>") and reads
+  the `audits` rows afterwards.
 
 ## Checks (each → boolean/number + one plain-English finding)
 - `ssl_ok`, `https_redirect`, `mobile_score` (PSI 0–100), `perf_score`, `lcp_s`,
@@ -32,7 +33,7 @@ has no SSL") and raise `ticket_score` for leads whose site is a bigger job.
 3. Adjust `Leads.ticket_score`: no site +30, down +25, no SSL +20, mobile <50 +15,
    outdated +15, cap 100. Set `Leads.status=audited`.
 
-## Outputs (Audits tab)
+## Outputs (Audits table)
 `audit_id, lead_id, website, checked_at, site_status, ssl_ok, mobile_score, perf_score, lcp_s,
 cms, copyright_year, looks_outdated, has_title, has_meta_desc, broken_links_sampled,
 contact_email_on_site, meta_pixel, google_tag, top_issue, audit_summary`

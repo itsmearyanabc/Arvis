@@ -80,5 +80,6 @@ AS_ARVIS
 
 echo
 echo "Done. Send /start to your bot on Telegram; paste the reply (or a screenshot) back."
+echo "Next: copy .env.example to /opt/arvis/.env (owner arvis, chmod 600) and fill the keys."
 echo "PM2 / armedias.com untouched."
 
