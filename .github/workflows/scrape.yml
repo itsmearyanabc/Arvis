@@ -24,6 +24,8 @@ jobs:
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+      GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
       MARKET_ID: ${{ github.event.inputs.market_id }}
     steps:
       - uses: actions/checkout@v4
@@ -34,9 +36,10 @@ jobs:
       - name: Build queries from active markets
         id: q
         run: |
-          python -I workers/scrape/make_queries.py "$MARKET_ID" > queries.txt 2> market.txt
+          python -I workers/scrape/make_queries.py "$MARKET_ID"
+          python -I workers/scrape/start_run.py "$(cat market.txt)"
           echo "market_id=$(cat market.txt)" >> "$GITHUB_OUTPUT"
-          echo "run_id=$(python -I workers/scrape/start_run.py "$(cat market.txt)")" >> "$GITHUB_OUTPUT"
+          echo "run_id=$(cat run_id.txt)" >> "$GITHUB_OUTPUT"
           cat queries.txt
       - name: Run gosom/google-maps-scraper
         run: |
@@ -46,6 +49,8 @@ jobs:
           wc -l results.csv
       - name: Upload to Supabase
         run: python -I workers/scrape/upload.py results.csv "${{ steps.q.outputs.market_id }}" "${{ steps.q.outputs.run_id }}"
+      - name: Mirror new leads to Google Sheets (skips if not configured)
+        run: python -I -m workers.common.sheets
       - uses: actions/upload-artifact@v4
         if: always()
         with:
