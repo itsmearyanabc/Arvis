@@ -27,7 +27,7 @@ LLM loop, Telegram gateway, cron, skills. Everything ARVIS knows how to do lives
               │ dispatch (GitHub API)     │ read/write            │ SMTP/IMAP
               ▼                           ▼                       ▼
  GitHub Actions (free)          Supabase free tier, Mumbai      Zoho Mail
-   nightly workers:               ARVIS's OWN project             mail.armedias.tech
+   nightly workers:               ARVIS's OWN project             connect@armedias.tech
    - scrape  (gosom/google-       tables: markets, leads,         (SPF/DKIM/DMARC,
      maps-scraper in a runner)    audits, contacts, templates,    warm-up 2–3 wks)
    - audit   (site checks, PSI)   sequences, replies, unsubs,
@@ -65,8 +65,8 @@ a disk or a public port with ARVIS, and a compromised worker cannot reach the VP
 - B2B targets only. Never consumer / personal addresses.
 - CAN-SPAM / CASL compliant: real postal address in every email, working unsubscribe,
   honest subject and from-name, unsubscribes honoured immediately and forever.
-- Cold email goes out from **mail.armedias.tech** (own SPF/DKIM/DMARC, 2–3 week warm-up).
-  **Never** from armedias.com, never from the bare armedias.tech root.
+- Cold email goes out from **connect@armedias.tech** (Zoho, SPF/DKIM/DMARC per `docs/dns.md`,
+  2–3 week warm-up, DMARC `p=none` first). **Never** from armedias.com.
 
 **Quality over quantity**
 - Max **50 emails/day total** at first, grown slowly and only when reply rate holds.
@@ -112,7 +112,7 @@ docs/instagram-and-linkedin.md  why no IG/LinkedIn automation, what we do instea
 |---|---|---|
 | 0 | This scaffold, pushed to GitHub | branch on GitHub |
 | 1 | Supabase project (Mumbai) + schema; pause trezuh; `vps/01`→`03`; BotFather; Hermes answers on Telegram | pasted outputs + Telegram screenshot |
-| 1b | In parallel: Zoho mailbox on mail.armedias.tech, SPF/DKIM/DMARC, warm-up starts | DNS checks pass |
+| 1b | In parallel: Zoho on armedias.tech (connect@), SPF/DKIM/DMARC, warm-up starts | DNS checks pass |
 | 2 | GitHub Actions `scrape` worker → Supabase; brain dispatches it; `daily-report` on Telegram | rows in Supabase + report screenshot |
 | 3 | `audit` + `enrich` workers, Reacher on VPS, UptimeRobot, Cal.com hosted on book. | rows + booking page loads |
 | 4 | `draft-email` with approval gate on Telegram | approved drafts in Supabase |

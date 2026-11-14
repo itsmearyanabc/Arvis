@@ -114,7 +114,7 @@ create table if not exists mailboxes (
   mailbox text primary key, address text not null, from_name text, domain text not null,
   daily_cap int default 20, warmup_until date, paused boolean default false,
   sent_today int default 0, bounces_7d int default 0,
-  constraint no_root_domains check (domain not in ('armedias.com','armedias.tech'))
+  constraint no_armedias_com check (domain <> 'armedias.com')
 );
 
 create table if not exists monitors (

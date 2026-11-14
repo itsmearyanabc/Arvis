@@ -50,7 +50,7 @@ jobs:
       - name: Upload to Supabase
         run: python -I workers/scrape/upload.py results.csv "${{ steps.q.outputs.market_id }}" "${{ steps.q.outputs.run_id }}"
       - name: Mirror new leads to Google Sheets (skips if not configured)
-        run: python -I -m workers.common.sheets
+        run: python -I workers/common/sheets.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -23,8 +23,8 @@ services:
     environment:
       RUST_LOG: info
       RCH__BACKEND_NAME: arvis
-      RCH__FROM_EMAIL: ${REACHER_FROM_EMAIL:-verify@mail.armedias.tech}
-      RCH__HELLO_NAME: ${REACHER_HELLO_NAME:-mail.armedias.tech}
+      RCH__FROM_EMAIL: ${REACHER_FROM_EMAIL:-connect@armedias.tech}
+      RCH__HELLO_NAME: ${REACHER_HELLO_NAME:-armedias.tech}
       RCH__SMTP_TIMEOUT: "20"
       RCH__HTTP_HOST: 0.0.0.0
       RCH__HTTP_PORT: "8080"

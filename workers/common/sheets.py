@@ -2,9 +2,10 @@
 Sheet so he can browse leads in Sheets while Supabase stays the system of record.
 Needs GOOGLE_SERVICE_ACCOUNT_JSON (the JSON text, or a path) and GOOGLE_SHEET_ID.
 Silently skips when either is missing."""
-import os, json
+import os, sys, json
 from typing import Optional
-from .db import db
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from common.db import db
 
 LEAD_COLS = ["lead_id", "business_name", "niche", "city", "country", "phone", "website", "rating",
              "review_count", "fit_score", "ticket_score", "contact_quality", "primary_email",
@@ -41,5 +42,4 @@ def mirror_leads(since_iso: Optional[str] = None, tab: str = "Leads") -> int:
     return len(rows)
 
 if __name__ == "__main__":
-    import sys
     mirror_leads(sys.argv[1] if len(sys.argv) > 1 else None)

@@ -1,6 +1,6 @@
 ---
 name: send-sequence
-description: Send approved cold-email sequences (step 1 + up to 2 follow-ups) from the warmed-up mail.armedias.tech Zoho mailboxes, with a hard 50/day cap, per-mailbox caps, random gaps, stop-on-reply and unsubscribe handling. Use on the daily send schedule only.
+description: Send approved cold-email sequences (step 1 + up to 2 follow-ups) from the warmed-up connect@armedias.tech Zoho mailbox, with a hard 50/day cap, per-mailbox caps, random gaps, stop-on-reply and unsubscribe handling. Use on the daily send schedule only.
 ---
 
 # send-sequence
@@ -48,7 +48,7 @@ The only skill that sends email. It is deliberately slow, capped and boring.
 - Random 90–420 s between sends. Never bursts.
 
 ## Never do
-- Never send from armedias.com or the bare armedias.tech root. Only `SEND_DOMAIN` (mail.armedias.tech) mailboxes.
+- Never send from armedias.com. Only `SEND_DOMAIN` (armedias.tech) Zoho mailboxes listed in `mailboxes`.
 - Never send without `approved_by_aryan=TRUE` while `REQUIRE_APPROVAL=true`.
 - Never send to anyone who replied, unsubscribed, bounced, or to consumer addresses.
 - Never send step 2/3 if the thread has any reply (even an auto-reply → park for 7 days).

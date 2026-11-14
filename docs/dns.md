@@ -1,22 +1,29 @@
 # DNS records for ARVIS (all on armedias.tech; armedias.com is not touched)
 
-Add these in the DNS panel where armedias.tech is managed. Values marked `<...>` come from the
-service's own setup screen; copy exactly what it shows.
+DNS for armedias.tech is at Hostinger (nameservers hyperion/atlas.dns-parking.com): hPanel →
+Domains → armedias.tech → DNS / Name Servers. Values marked `<...>` come from the service's own
+setup screen; copy exactly what it shows.
 
-## 1. Cold-email subdomain: mail.armedias.tech (Zoho Mail)
-Zoho Mail → Add domain → `mail.armedias.tech` → follow its verification screen.
+## 1. Cold-email domain: armedias.tech root (Zoho Mail, India datacenter)
+Aryan connected the ROOT domain in Zoho on 2026-11-15 (mailbox connect@armedias.tech), not the
+`mail.` subdomain originally planned. Verification TXT is already in place. Consequence: cold
+email reputation now sits on armedias.tech itself, so DMARC starts at `p=none`, warm-up is
+mandatory, and caps stay low. armedias.com is still never used.
 
-| Type | Host | Value | Note |
-|---|---|---|---|
-| TXT | mail | `zoho-verification=<code>` | domain verification |
-| MX | mail | `mx.zoho.com` prio 10, `mx2.zoho.com` 20, `mx3.zoho.com` 50 | replies land in Zoho |
-| TXT | mail | `v=spf1 include:zohomail.com ~all` | SPF (Zoho's exact include may differ by region: use theirs) |
-| TXT | zmail._domainkey.mail | `v=DKIM1; k=rsa; p=<key from Zoho>` | DKIM, selector shown by Zoho |
-| TXT | _dmarc.mail | `v=DMARC1; p=quarantine; rua=mailto:dmarc@mail.armedias.tech; adkim=s; aspf=s` | start `p=none` for the first week, then quarantine |
+| Type | Host | Value | TTL | Note |
+|---|---|---|---|---|
+| MX | @ | `mx.zoho.in` priority 10 | 3600 | Zoho India (your verification code ends in zoho.in) |
+| MX | @ | `mx2.zoho.in` priority 20 | 3600 | |
+| MX | @ | `mx3.zoho.in` priority 50 | 3600 | |
+| TXT | @ | `v=spf1 include:zohomail.in ~all` | 3600 | SPF. If an SPF TXT already exists, merge: one SPF record only |
+| TXT | zmail._domainkey | `v=DKIM1; k=rsa; p=<key>` | 3600 | DKIM: Zoho Mail Admin → Email Configuration → DKIM → add selector `zmail` → copy the TXT |
+| TXT | _dmarc | `v=DMARC1; p=none; rua=mailto:connect@armedias.tech; adkim=s; aspf=s` | 3600 | week 1–2 `p=none`, then `p=quarantine` |
 
-Then: create the mailbox (your first name @ mail.armedias.tech), enable IMAP in Zoho Mail
-settings, generate an **app password** for SMTP/IMAP (never your real password), and start a
-warm-up: send 5–10 real emails a day to people you know for 2–3 weeks, replying to replies.
+Zoho steps after DNS: Admin console → Email Configuration → verify MX / SPF / DKIM (green
+ticks). Mail Settings → Mail Accounts → enable **IMAP access** for connect@. Zoho Accounts →
+Security → **App passwords** → create one named "ARVIS" (SMTP/IMAP use this, never the real
+password). Warm-up: from day 1 send 5–10 real, human emails a day from connect@ to people
+who will reply, for 2–3 weeks, before any cold email.
 
 ## 2. Dashboard: arvis.armedias.tech (Vercel)
 | Type | Host | Value |
