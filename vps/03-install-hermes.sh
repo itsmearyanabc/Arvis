@@ -63,19 +63,10 @@ if [[ -d "$SKILLS_SRC" ]]; then
   echo "linked skills: $(ls "$SKILLS_DST" | tr '\n' ' ')"
 fi
 
-# 2. provider + keys (interactive) --------------------------------------------
-echo; echo "=== hermes setup (interactive): choose Gemini as main provider, add Groq/OpenRouter as fallbacks ==="
-hermes setup
-
-# 3. Telegram gateway (interactive) --------------------------------------------
-echo; echo "=== hermes gateway setup (interactive): choose Telegram, paste bot token, allow only your user id ==="
-hermes gateway setup
-
-# 4. install gateway as a user service -----------------------------------------
-hermes gateway install
-systemctl --user enable --now hermes-gateway 2>/dev/null || true
-echo
-systemctl --user status hermes-gateway --no-pager || hermes gateway status || true
+# 2-4. The installer above already ran the setup wizard and installed the gateway
+#      service. Model + Telegram are set afterwards with plain config commands
+#      (see README Phase 1), because this heredoc has no TTY for the wizard.
+hermes gateway status || true
 AS_ARVIS
 
 echo

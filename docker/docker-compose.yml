@@ -2,8 +2,10 @@
 # Actions (see .github/workflows). Run as the `arvis` user from /opt/arvis/docker:
 #   docker compose up -d
 #
-# Rules: port bound to 127.0.0.1 only; resource limit set; the daemon's cgroup-parent
-# (vps/02) puts it under arvis.slice; nothing touches PM2 / armedias.com / ports 80/443.
+# Rules: port bound to 127.0.0.1 only; resource limit set; `cgroup_parent: arvis.slice`
+# puts the container under the ARVIS caps WITHOUT any Docker daemon change or restart
+# (other containers on the box, e.g. originx-*, are never interrupted);
+# nothing touches PM2 / armedias.com / ports 80/443.
 
 name: arvis
 
@@ -17,6 +19,7 @@ services:
     image: reacherhq/backend:latest
     container_name: arvis-reacher
     restart: unless-stopped
+    cgroup_parent: arvis.slice
     environment:
       RUST_LOG: info
       RCH__BACKEND_NAME: arvis
