@@ -1,0 +1,133 @@
+# ARVIS supporting services. Run as the `arvis` user from /opt/arvis/docker:
+#   docker compose --profile core up -d     # scraper + reacher + searxng + uptime-kuma (always on)
+#   docker compose --profile booking up -d  # Cal.com (Phase 4)
+#
+# Rules baked in:
+#   - every port is bound to 127.0.0.1 only; Nginx (docker/nginx/arvis.conf) is the only public door
+#   - every service has deploy.resources.limits; the daemon's cgroup-parent (vps/02) puts them all
+#     under arvis.slice, so the slice cap is the real ceiling even if these add up to more
+#   - this runs on the dedicated ARVIS VPS (2 vCPU / 8 GB); armedias.com is on another server
+#
+# Sizing: limits below total ≈ 1.9 cpu / 3.3 GiB with everything up (Cal.com adds ~1.9 GiB),
+# inside the 180% / ~6.4G slice from vps/01. Hermes itself is light (<300 MB).
+
+name: arvis
+
+x-common: &common
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+  security_opt: [ "no-new-privileges:true" ]
+
+services:
+
+  # --- Google Maps scraper (lead source #1) -----------------------------------
+  # Web UI + REST API. `-c 2` = two headless browsers at a time; cron keeps jobs nightly.
+  scraper:
+    <<: *common
+    image: gosom/google-maps-scraper:latest
+    container_name: arvis-scraper
+    profiles: [ "core" ]
+    command: [ "-web", "-data-folder", "/data", "-c", "2" ]
+    ports: [ "127.0.0.1:8082:8080" ]
+    volumes: [ "../data/scraper:/data" ]
+    shm_size: "1g"
+    deploy:
+      resources:
+        limits: { cpus: "1.20", memory: "2G" }
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ >/dev/null || exit 1" ]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+
+  # --- Reacher: self-hosted email verification -------------------------------
+  # POST http://127.0.0.1:8081/v0/check_email {"to_email": "..."}
+  reacher:
+    <<: *common
+    image: reacherhq/backend:latest
+    container_name: arvis-reacher
+    profiles: [ "core" ]
+    environment:
+      RUST_LOG: info
+      RCH__BACKEND_NAME: arvis
+      RCH__FROM_EMAIL: ${REACHER_FROM_EMAIL:-verify@armedias.co}
+      RCH__HELLO_NAME: ${REACHER_HELLO_NAME:-armedias.co}
+      RCH__SMTP_TIMEOUT: "20"
+      RCH__HTTP_HOST: 0.0.0.0
+      RCH__HTTP_PORT: "8080"
+      RCH__WORKER__ENABLE: "false"
+    ports: [ "127.0.0.1:8081:8080" ]
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: "384M" }
+    # NOTE: SMTP verification needs outbound port 25. Hostinger blocks it on some plans;
+    # if "is_reachable: unknown" for everything, fall back to Hunter.io verification.
+
+  # --- SearXNG: self-hosted meta-search (free public web lookup) ---------------
+  # GET http://127.0.0.1:8080/search?q=...&format=json
+  searxng:
+    <<: *common
+    image: searxng/searxng:latest
+    container_name: arvis-searxng
+    profiles: [ "core" ]
+    environment:
+      SEARXNG_BASE_URL: http://127.0.0.1:8080/
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-change-me-run-openssl-rand-hex-32}
+    ports: [ "127.0.0.1:8080:8080" ]
+    volumes: [ "./searxng:/etc/searxng:rw" ]
+    cap_drop: [ "ALL" ]
+    cap_add: [ "CHOWN", "SETGID", "SETUID" ]
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: "384M" }
+
+  # --- Uptime Kuma: website monitoring -----------------------------------------
+  # Runs here, on a different server than armedias.com, so its checks are real external checks.
+  uptime-kuma:
+    <<: *common
+    image: louislam/uptime-kuma:1
+    container_name: arvis-uptime-kuma
+    profiles: [ "core" ]
+    ports: [ "127.0.0.1:3001:3001" ]
+    volumes: [ "../data/uptime-kuma:/app/data" ]
+    deploy:
+      resources:
+        limits: { cpus: "0.20", memory: "256M" }
+
+  # --- Cal.com: self-hosted booking (Phase 4) -----------------------------------
+  # Needs Postgres + ~1.5 GiB RAM. Commented out until Phase 4. Fits the 8 GB box;
+  # Cal.com's free hosted plan with a CNAME on book.armedias.tech is the fallback.
+  #
+  # calcom-db:
+  #   <<: *common
+  #   image: postgres:16-alpine
+  #   container_name: arvis-calcom-db
+  #   profiles: [ "booking" ]
+  #   environment:
+  #     POSTGRES_USER: calcom
+  #     POSTGRES_PASSWORD: ${CALCOM_DB_PASSWORD}
+  #     POSTGRES_DB: calcom
+  #   volumes: [ "../data/calcom-db:/var/lib/postgresql/data" ]
+  #   deploy:
+  #     resources:
+  #       limits: { cpus: "0.30", memory: "384M" }
+  #
+  # calcom:
+  #   <<: *common
+  #   image: calcom/cal.com:latest
+  #   container_name: arvis-calcom
+  #   profiles: [ "booking" ]
+  #   depends_on: [ calcom-db ]
+  #   environment:
+  #     NEXT_PUBLIC_WEBAPP_URL: https://book.armedias.tech
+  #     NEXTAUTH_URL: https://book.armedias.tech
+  #     NEXTAUTH_SECRET: ${CALCOM_NEXTAUTH_SECRET}
+  #     CALENDSO_ENCRYPTION_KEY: ${CALCOM_ENCRYPTION_KEY}
+  #     DATABASE_URL: postgresql://calcom:${CALCOM_DB_PASSWORD}@calcom-db:5432/calcom
+  #     DATABASE_DIRECT_URL: postgresql://calcom:${CALCOM_DB_PASSWORD}@calcom-db:5432/calcom
+  #   ports: [ "127.0.0.1:3002:3000" ]
+  #   deploy:
+  #     resources:
+  #       limits: { cpus: "1.0", memory: "1536M" }
