@@ -11,16 +11,16 @@
 #   4. Adds a 2G swapfile if the box has none (Hostinger images ship without swap).
 #
 # What it NEVER does:
-#   - It does not touch PM2, Node, Nginx config, or anything belonging to
-#     armedias.com. It only adds a new user, a new slice and (optionally) swap.
+#   - PM2, Node, Nginx config, the armedias.com code or its process. It adds a user,
+#     a slice and a swapfile. Nothing else. No service is restarted.
 #
-# ARVIS runs on its OWN dedicated VPS (decided 2026-11-15). armedias.com lives on a
-# different server and is never touched by anything in this repo. The slice caps here are
-# sane limits so a runaway scraper cannot wedge the ARVIS box itself:
+# ARVIS SHARES the Hostinger VPS with armedias.com (1 vCPU / 3.8 GiB, no swap, Nginx, PM2).
+# Decided 2026-11-15. The slice caps are therefore strict: ARVIS as a whole can never use
+# more than half the CPU or 1.5 GiB, so armedias.com keeps its responsiveness.
 #   Default ........ sudo bash 01-create-user.sh
-#        CPUQuota=90% of cores, MemoryMax=80% of RAM, MemoryHigh=85% of that, 2G swap.
+#        CPUQuota=50%, MemoryMax=1536M, MemoryHigh=1280M, 2G swapfile (swappiness 10).
 #   Custom ......... sudo bash 01-create-user.sh <cpu%> <mem> [swap]
-#        e.g. sudo bash 01-create-user.sh 180% 6G 2G
+#        e.g. sudo bash 01-create-user.sh 60% 2G 2G
 # =============================================================================
 set -euo pipefail
 if [[ $EUID -ne 0 ]]; then echo "Run with sudo." >&2; exit 1; fi
@@ -29,10 +29,7 @@ ARVIS_USER=arvis
 ARVIS_HOME=/opt/arvis
 
 if [[ $# -eq 0 ]]; then
-  CORES=$(nproc); MEM_KB=$(awk '/MemTotal/{print $2}' /proc/meminfo)
-  CPU_QUOTA="$(( CORES * 90 ))%"
-  MEM_MAX="$(( MEM_KB * 80 / 100 / 1024 ))M"
-  SWAP_SIZE="2G"
+  CPU_QUOTA="50%"; MEM_MAX="1536M"; SWAP_SIZE="2G"
 else
   CPU_QUOTA="$1"; MEM_MAX="${2:?usage: 01-create-user.sh [<cpu%> <mem> [swap]]}"; SWAP_SIZE="${3:-2G}"
 fi
@@ -112,4 +109,4 @@ echo "  caps        : CPUQuota=$CPU_QUOTA MemoryMax=$MEM_MAX MemoryHigh=$MEM_HIG
 echo "  applied to  : arvis.slice (containers) + user-${UID_ARVIS}.slice (Hermes/cron)"
 systemctl show arvis.slice -p CPUQuotaPerSecUSec -p MemoryMax -p MemoryHigh
 free -h
-echo "armedias.com (other server) untouched."
+echo "PM2 / armedias.com untouched (no service restarted)."

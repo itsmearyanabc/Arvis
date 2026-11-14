@@ -156,7 +156,7 @@ Common conventions: timestamps ISO-8601 with tz; booleans `TRUE`/`FALSE`; scores
 ## Monitors
 | column | type |
 |---|---|
-| monitor_id, kuma_id | text |
+| monitor_id, monitor_ext_id | text (UptimeRobot id) |
 | name, url | text |
 | type | enum: http · keyword · ping |
 | interval_s | int |

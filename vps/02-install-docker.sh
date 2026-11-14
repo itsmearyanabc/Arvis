@@ -10,8 +10,10 @@
 #      ARVIS starts is counted against the ARVIS CPU/RAM caps from 01.
 #   4. Limits container log size so logs can't fill the disk.
 #
-# Runs on the dedicated ARVIS VPS. armedias.com is on another server and is never
-# touched. If Docker is already present it only writes daemon.json and restarts dockerd.
+# Shared VPS with armedias.com: PM2, Node and Nginx are never touched. Docker is
+# already installed on this box (VPS report), so the install block is skipped and the
+# script only writes daemon.json and restarts dockerd. It refuses to restart dockerd
+# if any container is currently running, so nothing of yours is interrupted.
 #
 # Usage: sudo bash 02-install-docker.sh
 # =============================================================================
@@ -37,6 +39,11 @@ usermod -aG docker arvis
 
 # daemon.json: put containers under arvis.slice, cap log size.
 # If a daemon.json already exists it is backed up, not overwritten blindly.
+if [[ -n "$(docker ps -q 2>/dev/null)" ]]; then
+  echo "Containers are running on this box:"; docker ps --format '  {{.Names}} ({{.Image}})'
+  echo "Restarting dockerd would stop them. Stop them first or paste this output to Claude." >&2
+  exit 1
+fi
 mkdir -p /etc/docker
 if [[ -f /etc/docker/daemon.json ]]; then
   cp /etc/docker/daemon.json "/etc/docker/daemon.json.bak.$(date +%s)"
@@ -57,4 +64,4 @@ echo
 docker --version
 docker compose version
 echo "arvis is in group docker (takes effect on next login of arvis)."
-echo "Containers will run under arvis.slice."
+echo "Containers will run under arvis.slice. PM2 / armedias.com untouched."

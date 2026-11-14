@@ -15,8 +15,9 @@
 #   Steps 2-3 are INTERACTIVE: the script stops and lets you answer.
 #   Docs: https://hermes-agent.nousresearch.com/docs
 #
-# Runs on the dedicated ARVIS VPS. Only root action: apt install of python3/git/curl.
-# armedias.com is on another server and is never touched.
+# What it NEVER does:
+#   - Nothing system-wide except apt install of python3/git/curl (already present per the
+#     VPS report). Does not touch PM2 / armedias.com / root's nvm Node.
 #
 # Usage: run as root/sudo; it drops to the arvis user itself:
 #   sudo bash 03-install-hermes.sh
@@ -79,4 +80,5 @@ AS_ARVIS
 
 echo
 echo "Done. Send /start to your bot on Telegram; paste the reply (or a screenshot) back."
+echo "PM2 / armedias.com untouched."
 

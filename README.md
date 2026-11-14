@@ -13,26 +13,29 @@ to do lives in `hermes/skills/*/SKILL.md` (agentskills.io format).
 ## Architecture
 
 ```
-VPS #1 — existing Hostinger box (armedias.com under PM2, 1 vCPU / 3.8 GiB)
-└── NOTHING from this repo runs here. Not touched, not loaded, not monitored from itself.
-
-VPS #2 — dedicated ARVIS box (Ubuntu 24.04, ~2 vCPU / 8 GB)  ← decided 2026-11-15
-├── nginx ............... fresh install; docker/nginx/arvis.conf serves
-│                          arvis.armedias.tech / book.armedias.tech (certbot TLS)
-└── arvis (Linux user, home /opt/arvis)
-    ├── systemd slice "arvis.slice" ... CPUQuota/MemoryMax as sane limits (90% cores, 80% RAM)
+Existing Hostinger VPS (Ubuntu 24.04, 1 vCPU / 3.8 GiB, no swap)  ← shared, decided 2026-11-15
+├── armedias.com ........ existing site under PM2 (root) — NEVER touched, never loaded by ARVIS
+├── camel, trezuh ....... other PM2 apps; trezuh paused by Aryan to free RAM
+├── nginx ............... existing; ARVIS only ADDS a separate server block
+│                          (docker/nginx/arvis.conf) for arvis.armedias.tech
+├── docker .............. already installed; ARVIS containers get cgroup-parent arvis.slice
+└── arvis (separate Linux user, home /opt/arvis)
+    ├── systemd slice "arvis.slice" ... CPUQuota=50%, MemoryMax=1.5G, 2G swapfile:
+    │                                   ARVIS in total can never starve armedias.com
     ├── Hermes Agent .................. gateway (Telegram bot "ARVIS") + cron + skills
     │       LLM: Gemini free tier → Groq / Cerebras / OpenRouter :free fallbacks
     └── Docker (docker/docker-compose.yml, all ports bound to 127.0.0.1)
-        ├── scraper ....... gosom/google-maps-scraper  (lead source #1)
-        ├── reacher ....... reacherhq/check-if-email-exists (email verification)
-        ├── searxng ....... self-hosted meta-search (public web lookup, free)
-        ├── uptime-kuma ... website monitoring (armedias.com, clients, our own) from OUTSIDE
-        └── calcom ........ self-hosted booking (Phase 4, commented out until then)
+        ├── reacher ....... reacherhq/check-if-email-exists (email verification), always on
+        ├── searxng ....... self-hosted meta-search (public web lookup, free), always on
+        └── scraper ....... gosom/google-maps-scraper, 1 browser, started 02:00–05:00 only
+
+Off-box (free, because the box is shared):
+  UptimeRobot ..... monitoring armedias.com + clients from outside (Uptime Kuma kept in compose, unused)
+  Cal.com hosted .. booking at book.armedias.tech via CNAME (self-host does not fit 3.8 GiB)
 
 Data flow
   Markets ─▶ scrape ─▶ Google Sheets (Leads) ─▶ audit + enrich/verify ─▶ draft (approval gate)
-         ─▶ send sequence (new lookalike domain, Zoho) ─▶ inbox triage ─▶ booking brief
+         ─▶ send sequence (mail.armedias.tech, Zoho) ─▶ inbox triage ─▶ booking brief
   Google Sheets is the system of record first; later a one-way push into ARVIS's own
   Supabase project (lead dashboard). ARVIS never has direct DB access to armedias.com's Supabase.
 ```
@@ -53,8 +56,10 @@ scraped / verified / sent / replied / booked (reply and booking rate, no open-ra
 - B2B targets only. Never consumer / personal addresses.
 - CAN-SPAM / CASL compliant: real postal address in every email, working unsubscribe,
   honest subject and from-name, unsubscribes honoured immediately and forever.
-- Cold email goes out from new lookalike domains (e.g. armedias.co) with Zoho mailboxes,
-  SPF/DKIM/DMARC and a 2–3 week warm-up. **Never** from armedias.com or armedias.tech.
+- Cold email goes out from the subdomain **mail.armedias.tech** (Aryan's call, 2026-11-15)
+  with Zoho mailboxes, its own SPF/DKIM/DMARC and a 2–3 week warm-up. A subdomain keeps most
+  reputation damage off the root domain. **Never** from armedias.com, and never from the bare
+  armedias.tech root where the dashboard and booking page live.
 
 **Quality over quantity**
 - Max **50 emails/day total** at first, grown slowly and only when reply rate holds.
@@ -72,10 +77,10 @@ scraped / verified / sent / replied / booked (reply and booking rate, no open-ra
   Continuous but slow. Nothing gets banned.
 
 **Infrastructure**
-- armedias.com (PM2, its own VPS) is never touched, restarted or loaded. SEO and responsiveness
-  must not drop. ARVIS lives on a second, dedicated VPS; the only link is `armedias.com/admin`
-  getting a plain link to the dashboard later.
-- ARVIS runs as user `arvis` in `/opt/arvis` under `arvis.slice` caps on its own box.
+- armedias.com (PM2) is never touched, restarted or loaded. SEO and responsiveness must not
+  drop. ARVIS shares the box but is hard-capped at 50% CPU / 1.5 GiB by `arvis.slice`, heavy
+  jobs run only 02:00–05:00, and `armedias.com/admin` later gets only a link to the dashboard.
+- ARVIS runs as user `arvis` in `/opt/arvis` under `arvis.slice` caps.
 - Free API tiers everywhere. The only accepted costs: domains, mailboxes, and optionally
   ~$10/mo of an OpenRouter paid model if free tiers rate-limit the 24/7 agent.
 - Aryan runs every VPS command himself. Claude never gets SSH access.
@@ -102,8 +107,8 @@ data/                     local scratch, git-ignored
 | Phase | What | Gate (Aryan's proof) |
 |---|---|---|
 | 0 | This scaffold | files committed |
-| 1 | Buy ARVIS VPS; paste its report; run `vps/01`→`03`; BotFather bot; Hermes answers on Telegram | pasted outputs + Telegram screenshot |
-| 1b | In parallel: buy lookalike domain (e.g. armedias.co) + Zoho mailboxes, set SPF/DKIM/DMARC, start warm-up | DNS checks pass |
+| 1 | Pause trezuh; run `vps/01`→`03`; BotFather bot; Hermes answers on Telegram | pasted outputs + Telegram screenshot |
+| 1b | In parallel: Zoho mailbox on mail.armedias.tech, SPF/DKIM/DMARC, start warm-up | DNS checks pass |
 | 2 | Docker scraper up; `scrape-leads` → Google Sheets; `daily-report` on Telegram | Sheet rows + daily report screenshot |
 | 3 | Warm-up finishes (2–3 weeks from 1b); mailboxes registered in the Mailboxes tab | warm-up tool report |
 | 4 | `audit-website`, `enrich-verify` (Reacher), Uptime Kuma, Cal.com on book.armedias.tech | Sheet rows, booking page loads |

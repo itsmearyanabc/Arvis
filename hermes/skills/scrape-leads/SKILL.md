@@ -17,9 +17,10 @@ Google Maps listings only.
 
 ## Procedure
 1. Pick the active market with the oldest `last_scraped_at`.
-2. Submit ONE job to the scraper API (2 headless browsers max), depth ≤ 2, max results per
-   query ≤ 60.
-3. Poll the job, with exponential backoff (30 s → 5 min).
+2. Start the scraper container (`docker compose --profile scrape up -d scraper`, only inside
+   the 02:00–05:00 window), submit ONE job (`-c 1`, one headless browser), depth ≤ 2, max
+   results per query ≤ 60.
+3. Poll the job with exponential backoff (30 s → 5 min). Stop the container when done or at 05:00.
 4. For each result: skip if `place_id` exists in **Leads**. Skip if it looks like a consumer /
    private person listing (no business category, residential address).
 5. Compute:
@@ -41,14 +42,15 @@ city, country, address, phone, website, rating, review_count, maps_url, source, 
 ticket_score, contact_quality, status=new, scraped_at`.
 
 ## Rate limits
-- ≤ 3 jobs per night, ≤ 4 queries each, ≤ 60 results per query, 2 browsers, window
-  02:00–05:00 local.
+- One job per night, ≤ 4 queries, ≤ 60 results per query, 1 browser, window 02:00–05:00
+  local. The box is shared with armedias.com; never more.
 - Random 20–90 s gap between queries inside a job. Back off ×2 on any error, give up after 5.
 - Target ≤ 150 new leads/night. Quality over quantity; we only need ~50 sends/day.
 
 ## Never do
 - Never scrape LinkedIn, Instagram, Facebook, Yelp-logged-in or any site behind a login.
 - Never scrape residential / consumer listings; B2B only.
-- Never run the scraper outside the nightly window unless Aryan asks for a one-off.
+- Never run the scraper outside the nightly window (shared box) unless Aryan asks for a one-off.
+- Never run more than one browser.
 - Never write to armedias.com's Supabase; Google Sheets only (ARVIS's own Supabase later).
 - Never re-scrape a market more than once per 14 days.

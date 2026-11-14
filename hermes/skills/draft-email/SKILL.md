@@ -39,7 +39,7 @@ Aryan has approved, personalised only with facts ARVIS actually measured. Nothin
 - Any claim not traceable to the Audits row or the approved template text.
 - Any pricing number at all. Pricing is custom per client; say so only if asked.
 - Missing postal address or unsubscribe line.
-- From-domain is armedias.com or armedias.tech.
+- From-domain is armedias.com or the bare armedias.tech root (must be `SEND_DOMAIN`).
 
 ## Outputs (Sequences tab) — see `sheets/schema.md`.
 
