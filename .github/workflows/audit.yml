@@ -5,8 +5,13 @@ on:
     - cron: "0 23 * * *"         # 04:30 IST
   workflow_dispatch:
     inputs:
-      limit: { description: "max sites", required: false, default: "40" }
-concurrency: { group: audit, cancel-in-progress: false }
+      limit:
+        description: "max sites"
+        required: false
+        default: "40"
+concurrency:
+  group: audit
+  cancel-in-progress: false
 jobs:
   audit:
     runs-on: ubuntu-latest
@@ -15,9 +20,11 @@ jobs:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
       PSI_API_KEY: ${{ secrets.PSI_API_KEY }}
+      LIMIT: ${{ github.event.inputs.limit }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
+        with:
+          python-version: "3.12"
       - run: pip install -r workers/requirements.txt
-      - run: python -I workers/audit/audit.py "${{ github.event.inputs.limit || '40' }}"
+      - run: python -I workers/audit/audit.py "${LIMIT:-40}"
