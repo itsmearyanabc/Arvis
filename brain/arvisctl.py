@@ -23,9 +23,11 @@ them into leads (status verified+). Speak of "businesses scraped", "records", "e
   arvisctl sheets                     list the Google Sheet tabs with counts + links
   arvisctl sheets-layout market|city|group   reorganise ALL tabs: per city+niche (default), per city, or per niche group
   arvisctl mirror                     push new records to the Google Sheet now
+  arvisctl verify [--limit N]         verify unknown contact emails with self-hosted Reacher (5–15 s apart);
+                                      marks leads verified / parked. Runs nightly 06:30 IST (Hermes cron, no LLM).
   arvisctl report                     the daily Telegram report text
 Output is plain text meant to be pasted to Aryan; add --json for machine output."""
-import os, sys, json, argparse, datetime as dt, collections, urllib.request
+import os, sys, json, time, argparse, datetime as dt, collections, urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "workers"))
@@ -222,6 +224,42 @@ def cmd_mirror(a):
     n = mirror_leads()
     print(f"mirror done: {n} new records pushed to the Google Sheet." if n is not None else "mirror skipped")
 
+def cmd_verify(a):
+    import random, urllib.error
+    url = os.environ.get("REACHER_URL", "http://127.0.0.1:8081").rstrip("/") + "/v0/check_email"
+    try:
+        from common.events import log_event
+    except Exception:
+        log_event = lambda *x, **k: None
+    rows = db().table("contacts").select("contact_id,lead_id,email,contact_quality").eq("email_status", "unknown").limit(a.limit).execute().data
+    counts = collections.Counter(); unknown_streak = 0
+    for c in rows:
+        body = json.dumps({"to_email": c["email"]}).encode()
+        req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r: res = json.load(r)
+            status = res.get("is_reachable", "unknown"); catch_all = bool((res.get("mx") or {}).get("accepts_mail")) and bool((res.get("smtp") or {}).get("is_catch_all"))
+        except Exception as e:
+            status, catch_all = "unknown", False
+        counts[status] += 1
+        unknown_streak = unknown_streak + 1 if status == "unknown" else 0
+        db().table("contacts").update({"email_status": status, "verified_at": now_iso(), "verifier": "reacher"}).eq("contact_id", c["contact_id"]).execute()
+        lead_upd = None
+        if status == "safe" or (status == "risky" and c["contact_quality"] == "named"):
+            lead_upd = {"status": "verified", "primary_email": c["email"], "contact_quality": c["contact_quality"]}
+        elif status == "invalid":
+            others = db().table("contacts").select("contact_id").eq("lead_id", c["lead_id"]).in_("email_status", ["unknown", "safe", "risky"]).execute().data
+            if not others: lead_upd = {"status": "parked", "parked_reason": "invalid_only"}
+        if lead_upd:
+            lead_upd["updated_at"] = now_iso()
+            db().table("leads").update(lead_upd).eq("lead_id", c["lead_id"]).execute()
+        if unknown_streak >= 20:
+            msg = "Reacher returned 'unknown' 20× in a row: outbound port 25 is probably blocked on the VPS. Stopping; fall back to Hunter verification."
+            log_event("brain", "warn", msg); print(msg); break
+        time.sleep(random.uniform(5, 15))
+    summary = f"verified {len(rows)} contacts: " + ", ".join(f"{k}={v}" for k, v in counts.items()) if rows else "no contacts waiting for verification"
+    log_event("brain", "info", summary); print(summary)
+
 def cmd_report(a):
     rows = db().table("leads").select("niche,city,primary_email,scraped_at,contact_quality").execute().data
     today = now().astimezone(IST).strftime("%a %d %b")
@@ -234,7 +272,8 @@ def cmd_report(a):
              *[f"  · {k}: {v}" for k, v in by_mk.most_common(6)],
              f"Total: {len(rows)} businesses scraped, {sum(1 for r in rows if r['primary_email'])} emails ({sum(1 for r in rows if r['contact_quality']=='named')} named)",
              f"Worker runs: {len(runs)} ({len(failed)} failed)" + (": " + "; ".join(f"{r['worker']} {str(r['error'])[:60]}" for r in failed) if failed else ""),
-             "Audited 0 · Verified 0 · Sent 0 · Replied 0 · Booked 0 (phases 3–6 not live)",
+             f"Audited {count('audits')} · Contacts found {count('contacts')} · Verified leads {count('leads', status='verified')} · Parked {count('leads', status='parked')}",
+             "Sent 0 · Replied 0 · Booked 0 (phases 4–6 not live)",
              "Needs you: Google service account for the Sheet" if not os.environ.get("GOOGLE_SHEET_ID") else "",
              "Needs you: GitHub token for on-demand scrapes" if not os.environ.get("GITHUB_TOKEN") else ""]
     print("\n".join(l for l in lines if l))
@@ -244,6 +283,7 @@ def main():
     sp = p.add_subparsers(dest="cmd", required=True)
     sp.add_parser("stats"); sp.add_parser("report"); sp.add_parser("sheets"); sp.add_parser("mirror")
     sl = sp.add_parser("sheets-layout"); sl.add_argument("layout")
+    vf = sp.add_parser("verify"); vf.add_argument("--limit", type=int, default=60)
     for name in ("businesses", "leads"):
         l = sp.add_parser(name); l.add_argument("--limit", type=int, default=10); l.add_argument("--market"); l.add_argument("--with-email", action="store_true"); l.add_argument("--group")
     m = sp.add_parser("markets"); m.add_argument("--status")
@@ -255,7 +295,7 @@ def main():
     a = p.parse_args()
     log_event("brain", "info", "arvisctl %s" % " ".join(sys.argv[1:])[:200], {"cmd": a.cmd})
     {"stats": cmd_stats, "leads": cmd_leads, "businesses": cmd_leads, "markets": cmd_markets, "add-market": cmd_add_market, "runs": cmd_runs,
-     "dispatch": cmd_dispatch, "sheets": cmd_sheets, "sheets-layout": cmd_sheets_layout, "mirror": cmd_mirror, "report": cmd_report}[a.cmd](a)
+     "dispatch": cmd_dispatch, "sheets": cmd_sheets, "sheets-layout": cmd_sheets_layout, "mirror": cmd_mirror, "verify": cmd_verify, "report": cmd_report}[a.cmd](a)
 
 if __name__ == "__main__":
     main()
