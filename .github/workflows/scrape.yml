@@ -1,5 +1,7 @@
-# Nightly Google Maps scrape on a GitHub runner (free). Zero load on the VPS.
-# The brain dispatches this via the GitHub API (workflow_dispatch) or it runs on schedule.
+# Nightly Google Maps scrape on GitHub runners (free). Zero load on the VPS.
+# pick: chooses the 3 active markets scraped longest ago -> scrape: one runner per market,
+# in parallel, with website email extraction -> mirror: new leads to Google Sheets, one tab
+# per niche group (skips until GOOGLE_SERVICE_ACCOUNT_JSON + GOOGLE_SHEET_ID secrets exist).
 name: scrape
 on:
   schedule:
@@ -7,53 +9,83 @@ on:
   workflow_dispatch:
     inputs:
       market_id:
-        description: "market to scrape (blank = oldest active)"
+        description: "scrape only this market (blank = 3 oldest active)"
         required: false
         default: ""
-      max_results:
-        description: "max results per query"
+      count:
+        description: "how many markets tonight"
         required: false
-        default: "60"
+        default: "3"
 concurrency:
   group: scrape
   cancel-in-progress: false
+env:
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
 jobs:
-  scrape:
+  pick:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
-    env:
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-      GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-      GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
-      MARKET_ID: ${{ github.event.inputs.market_id }}
+    outputs:
+      markets: ${{ steps.p.outputs.markets }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r workers/requirements.txt
-      - name: Build queries from active markets
-        id: q
+      - run: pip install -q -r workers/requirements.txt
+      - id: p
+        env:
+          COUNT: ${{ github.event.inputs.count }}
+          MARKET_ID: ${{ github.event.inputs.market_id }}
         run: |
-          python -I workers/scrape/make_queries.py "$MARKET_ID"
-          python -I workers/scrape/start_run.py "$(cat market.txt)"
-          echo "market_id=$(cat market.txt)" >> "$GITHUB_OUTPUT"
-          echo "run_id=$(cat run_id.txt)" >> "$GITHUB_OUTPUT"
+          python -I workers/scrape/pick_markets.py "${COUNT:-3}" "$MARKET_ID"
+          echo "markets=$(cat markets.json)" >> "$GITHUB_OUTPUT"
+  scrape:
+    needs: pick
+    if: ${{ needs.pick.outputs.markets != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        market: ${{ fromJson(needs.pick.outputs.markets) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q -r workers/requirements.txt
+      - name: Build queries
+        run: |
+          python -I workers/scrape/make_queries.py "${{ matrix.market }}"
+          python -I workers/scrape/start_run.py "${{ matrix.market }}"
           cat queries.txt
-      - name: Run gosom/google-maps-scraper
+      - name: Run gosom/google-maps-scraper (with website email extraction)
         run: |
           docker run --rm -v "$PWD:/work" gosom/google-maps-scraper:latest \
             -input /work/queries.txt -results /work/results.csv \
-            -c 2 -depth 1 -exit-on-inactivity 3m -lang en
+            -c 2 -depth 1 -email -exit-on-inactivity 4m -lang en
           wc -l results.csv
       - name: Upload to Supabase
-        run: python -I workers/scrape/upload.py results.csv "${{ steps.q.outputs.market_id }}" "${{ steps.q.outputs.run_id }}"
-      - name: Mirror new leads to Google Sheets (skips if not configured)
-        run: python -I workers/common/sheets.py
+        run: python -I workers/scrape/upload.py results.csv "${{ matrix.market }}" "$(cat run_id.txt)"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: "results-${{ github.run_id }}"
+          name: "results-${{ matrix.market }}-${{ github.run_id }}"
           path: results.csv
           retention-days: 7
+  mirror:
+    needs: scrape
+    if: ${{ always() && needs.scrape.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    env:
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+      GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q -r workers/requirements.txt
+      - run: python -I workers/common/sheets.py

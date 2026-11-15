@@ -5,14 +5,7 @@ Picks the given market, else the active market with the oldest last_scraped_at."
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from common.db import db
-
-SYNONYMS = {  # extend per niche; keep to real business categories
-    "dentist": ["dentist", "dental clinic", "orthodontist"],
-    "lawyer": ["law firm", "lawyer", "attorney"],
-    "real estate": ["real estate agency", "realtor", "property agent"],
-    "plumber": ["plumber", "plumbing company"],
-    "clinic": ["medical clinic", "private clinic"],
-}
+from common.niches import synonyms_of
 
 def main():
     market_id = sys.argv[1].strip() if len(sys.argv) > 1 else ""
@@ -24,7 +17,7 @@ def main():
         print("no active market found" + (f" with id {market_id}" if market_id else ""), file=sys.stderr)
         sys.exit(2)
     m = rows[0]
-    terms = SYNONYMS.get(m["niche"].lower(), [m["niche"]])[:4]
+    terms = synonyms_of(m["niche"])[:4]
     with open("queries.txt", "w") as f:
         for t in terms:
             f.write(f"{t} in {m['city']}, {m['country']}\n")
