@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""arvis-router — one OpenAI-compatible endpoint in front of several FREE LLM providers, with failover.
+
+Hermes talks to http://127.0.0.1:8090/v1 as if it were a single model called "arvis-router".
+For each request the router tries providers in order and moves on when one answers 429/5xx,
+times out, or returns an error body. Streaming is passed through once a provider starts
+answering. Providers whose key is missing are skipped. Order and models come from /opt/arvis/.env:
+
+  ROUTER_ORDER=gemini-lite,gemini,cerebras,nvidia,groq,openrouter-free     (default)
+  GOOGLE_API_KEY / CEREBRAS_API_KEY / NVIDIA_API_KEY / GROQ_API_KEY / OPENROUTER_API_KEY
+  GEMINI_LITE_MODEL=gemini-3.5-flash-lite  GEMINI_MODEL=gemini-3.8-flash
+  CEREBRAS_MODEL=gpt-oss-120b  NVIDIA_MODEL=openai/gpt-oss-120b  GROQ_MODEL=openai/gpt-oss-120b
+  OPENROUTER_FREE_MODEL=nvidia/nemotron-3.5-super-vl:free
+  ROUTER_PORT=8090  ROUTER_LOG=/opt/arvis/logs/router.log
+
+Groq's free tier rejects big prompts, so it is only tried when the request is small
+(GROQ_MAX_CHARS, default 24000 chars ≈ 6k tokens). Zero dependencies beyond aiohttp.
+"""
+import os, sys, json, time, asyncio, logging, datetime as dt
+from aiohttp import web, ClientSession, ClientTimeout
+
+def load_env(path=os.environ.get("ARVIS_ENV", "/opt/arvis/.env")):
+    if os.path.exists(path):
+        for line in open(path):
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1); os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+load_env()
+
+E = os.environ.get
+PROVIDERS = {
+    "gemini-lite":     {"url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", "key": E("GOOGLE_API_KEY"),     "model": E("GEMINI_LITE_MODEL", "gemini-3.5-flash-lite")},
+    "gemini":          {"url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", "key": E("GOOGLE_API_KEY"),     "model": E("GEMINI_MODEL", "gemini-3.8-flash")},
+    "cerebras":        {"url": "https://api.cerebras.ai/v1/chat/completions",                               "key": E("CEREBRAS_API_KEY"),   "model": E("CEREBRAS_MODEL", "gpt-oss-120b")},
+    "nvidia":          {"url": "https://integrate.api.nvidia.com/v1/chat/completions",                     "key": E("NVIDIA_API_KEY"),     "model": E("NVIDIA_MODEL", "openai/gpt-oss-120b")},
+    "groq":            {"url": "https://api.groq.com/openai/v1/chat/completions",                           "key": E("GROQ_API_KEY"),       "model": E("GROQ_MODEL", "openai/gpt-oss-120b"), "max_chars": int(E("GROQ_MAX_CHARS", "24000"))},
+    "openrouter-free": {"url": "https://openrouter.ai/api/v1/chat/completions",                             "key": E("OPENROUTER_API_KEY"), "model": E("OPENROUTER_FREE_MODEL", "nvidia/nemotron-3.5-super-vl:free")},
+}
+ORDER = [p.strip() for p in E("ROUTER_ORDER", "gemini-lite,gemini,cerebras,nvidia,groq,openrouter-free").split(",") if p.strip() in PROVIDERS]
+PORT = int(E("ROUTER_PORT", "8090"))
+RETRY_STATUSES = {408, 409, 425, 429, 500, 502, 503, 504, 529}
+COOLDOWN = {}   # provider -> unix time until which it is skipped (after a 429)
+
+logging.basicConfig(filename=E("ROUTER_LOG") or None, level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+log = logging.getLogger("router")
+
+def active_providers(req_chars):
+    now = time.time()
+    for name in ORDER:
+        p = PROVIDERS[name]
+        if not p["key"]: continue
+        if COOLDOWN.get(name, 0) > now: continue
+        if p.get("max_chars") and req_chars > p["max_chars"]: continue
+        yield name, p
+
+async def try_provider(session, name, p, body, stream):
+    payload = dict(body); payload["model"] = p["model"]
+    payload.pop("user", None)
+    headers = {"Authorization": f"Bearer {p['key']}", "Content-Type": "application/json"}
+    if name == "openrouter-free": headers["HTTP-Referer"] = "https://armedias.com"; headers["X-Title"] = "ARVIS"
+    resp = await session.post(p["url"], json=payload, headers=headers, timeout=ClientTimeout(total=180, sock_connect=15, sock_read=90))
+    if resp.status in RETRY_STATUSES:
+        txt = (await resp.text())[:300]; resp.release()
+        if resp.status == 429: COOLDOWN[name] = time.time() + 60
+        raise RuntimeError(f"{name} HTTP {resp.status}: {txt}")
+    if resp.status >= 400:
+        txt = (await resp.text())[:300]; resp.release()
+        raise RuntimeError(f"{name} HTTP {resp.status}: {txt}")
+    return resp
+
+async def chat(request):
+    body = await request.json()
+    stream = bool(body.get("stream"))
+    req_chars = len(json.dumps(body))
+    errors = []
+    async with ClientSession() as session:
+        for name, p in active_providers(req_chars):
+            t0 = time.time()
+            try:
+                resp = await try_provider(session, name, p, body, stream)
+            except Exception as e:
+                errors.append(str(e)[:200]); log.warning("failover: %s", str(e)[:200]); continue
+            log.info("served by %s (%s) in %.1fs stream=%s chars=%d", name, p["model"], time.time() - t0, stream, req_chars)
+            if not stream:
+                data = await resp.json(content_type=None)
+                data["model"] = f"arvis-router/{name}"
+                return web.json_response(data)
+            out = web.StreamResponse(status=200, headers={"Content-Type": "text/event-stream", "Cache-Control": "no-cache", "X-Arvis-Provider": name})
+            await out.prepare(request)
+            try:
+                async for chunk in resp.content.iter_any():
+                    await out.write(chunk)
+            finally:
+                await out.write_eof()
+            return out
+    msg = "all providers failed: " + " | ".join(errors) if errors else "no provider configured (set GOOGLE_API_KEY etc. in /opt/arvis/.env)"
+    log.error(msg)
+    return web.json_response({"error": {"message": msg, "type": "router_exhausted", "code": 503}}, status=503)
+
+async def models(request):
+    return web.json_response({"object": "list", "data": [{"id": "arvis-router", "object": "model", "owned_by": "arvis", "context_length": 1000000,
+                                                          "providers": [n for n, _ in active_providers(0)]}]})
+
+async def health(request):
+    return web.json_response({"ok": True, "order": ORDER, "configured": [n for n in ORDER if PROVIDERS[n]["key"]],
+                              "cooldown": {k: int(v - time.time()) for k, v in COOLDOWN.items() if v > time.time()}, "time": dt.datetime.utcnow().isoformat()})
+
+app = web.Application(client_max_size=64 * 1024 * 1024)
+app.add_routes([web.post("/v1/chat/completions", chat), web.get("/v1/models", models), web.get("/health", health)])
+
+if __name__ == "__main__":
+    print(f"arvis-router on 127.0.0.1:{PORT}; order={ORDER}; configured={[n for n in ORDER if PROVIDERS[n]['key']]}", flush=True)
+    web.run_app(app, host="127.0.0.1", port=PORT, print=None, access_log=None)
