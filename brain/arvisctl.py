@@ -142,8 +142,14 @@ def cmd_dispatch(a):
     body = json.dumps({"ref": "main", "inputs": inputs}).encode()
     req = urllib.request.Request(f"https://api.github.com/repos/{repo}/actions/workflows/{a.worker}.yml/dispatches", data=body, method="POST",
                                  headers={"Authorization": f"Bearer {tok}", "Accept": "application/vnd.github+json", "Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        print(f"dispatched {a.worker} {inputs or ''} (HTTP {r.status}). It takes 2–10 minutes; check with: arvisctl runs")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            print(f"dispatched {a.worker} {inputs or ''} (HTTP {r.status}). It takes 2–10 minutes; check with: arvisctl runs")
+    except urllib.error.HTTPError as e:
+        hints = {401: "GITHUB_TOKEN is invalid or expired (check the line in /opt/arvis/.env, no quotes, no spaces)",
+                 403: "GITHUB_TOKEN lacks permission: edit the token, Repository permissions → Actions: Read and write",
+                 404: "workflow or repo not found: check GITHUB_REPO"}
+        sys.exit(f"dispatch failed: HTTP {e.code} — {hints.get(e.code, e.reason)}. The market is saved; the nightly schedule will still run it.")
 
 def cmd_sheets(a):
     from common.sheets import list_tabs
