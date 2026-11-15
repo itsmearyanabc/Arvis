@@ -35,6 +35,7 @@ def load_env():
 load_env()
 from common.db import db
 from common.niches import group_of, GROUPS
+from common.events import log_event
 
 IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
 def now(): return dt.datetime.now(dt.timezone.utc)
@@ -185,6 +186,7 @@ def main():
     r = sp.add_parser("runs"); r.add_argument("--limit", type=int, default=10)
     d = sp.add_parser("dispatch"); d.add_argument("worker", choices=["scrape", "audit"]); d.add_argument("--market"); d.add_argument("--city"); d.add_argument("--niche"); d.add_argument("--country"); d.add_argument("--count", type=int); d.add_argument("--limit", type=int)
     a = p.parse_args()
+    log_event("brain", "info", "arvisctl %s" % " ".join(sys.argv[1:])[:200], {"cmd": a.cmd})
     {"stats": cmd_stats, "leads": cmd_leads, "businesses": cmd_leads, "markets": cmd_markets, "add-market": cmd_add_market, "runs": cmd_runs,
      "dispatch": cmd_dispatch, "sheets": cmd_sheets, "mirror": cmd_mirror, "report": cmd_report}[a.cmd](a)
 

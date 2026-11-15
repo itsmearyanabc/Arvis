@@ -4,6 +4,7 @@ Never writes consumer listings (no category) and never re-inserts an existing pl
 import sys, os, csv, re, hashlib
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from common.db import db, finish_run, now_iso
+from common.events import log_event
 
 SOCIAL = {"instagram.com": "instagram_url", "linkedin.com": "linkedin_url", "facebook.com": "facebook_url"}
 
@@ -53,6 +54,7 @@ def fit_score(r, market):
 
 def main():
     path, market_id, run_id = sys.argv[1:4]
+    log_event("scrape", "info", "upload started for %s" % market_id, {"run_id": run_id})
     market = db().table("markets").select("*").eq("market_id", market_id).single().execute().data
     existing = {r["place_id"] for r in db().table("leads").select("place_id").eq("market_id", market_id).execute().data}
     rows, skipped = [], 0
@@ -101,6 +103,8 @@ def main():
     db().table("markets").update({"last_scraped_at": now_iso(), "businesses_found": len(existing)}).eq("market_id", market_id).execute()
     finish_run(run_id, {"new_leads": len(rows), "skipped_non_business": skipped, "market_id": market_id})
     print(f"inserted {len(rows)} leads, skipped {skipped}")
+    log_event("scrape", "info", "upload finished for %s: %d new leads, %d skipped" % (market_id, len(rows), skipped),
+              {"run_id": run_id, "market_id": market_id, "new_leads": len(rows)})
 
 if __name__ == "__main__":
     main()
