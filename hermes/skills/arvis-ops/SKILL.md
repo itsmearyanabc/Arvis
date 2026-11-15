@@ -36,10 +36,11 @@ Education (anything else → "Other").
 
 ## New task = sheet allocation
 Every new scrape task (a city+niche Aryan has not asked for before) gets one question before
-anything runs: **"New Google Sheet for this task, or the existing one with its own colour?"**
-If Aryan says new → `--new-sheet` (ARVIS creates it and shares it with him; `arvisctl sheets`
-lists it). If he says existing or does not care → no flag, a free palette colour is assigned,
-or `--color "#HEX"` if he names one. Tell him which colour/sheet the task got.
+anything runs: **"Its own tab in the ARVIS Data sheet, or the group tab with its own colour?"**
+If Aryan says own tab / new sheet → `--new-sheet --label "<task name>"` (ARVIS creates a tab named
+after the task; Google does not let service accounts create whole spreadsheets). If he says
+existing or does not care → no flag, a free palette colour is assigned on the group tab, or
+`--color "#HEX"` if he names one. Tell him which tab/colour the task got; `arvisctl sheets` lists all.
 
 ## How to answer
 - Short. Numbers first, then one line of context. Paste `arvisctl businesses` lines as they

@@ -119,7 +119,7 @@ def _sheet_alloc(a, mid):
     from common.sheets import PALETTE, create_sheet
     label = getattr(a, "label", None) or mid
     if getattr(a, "new_sheet", False):
-        sid = create_sheet(f"ARVIS — {label}")
+        sid = create_sheet(label)   # a dedicated TAB in the shared spreadsheet (Google forbids SA-owned files)
         return {"sheet_id": sid, "sheet_color": None, "task_label": label}
     color = getattr(a, "color", None)
     if not color:
@@ -155,7 +155,7 @@ def add_market(country, city, niche, a=None):
 def cmd_add_market(a):
     mid, created = add_market(a.country, a.city, a.niche, a)
     m = db().table("markets").select("*").eq("market_id", mid).single().execute().data
-    where = (f"its own Google Sheet (id {m['sheet_id']})" if m.get("sheet_id") else f"the shared Sheet, highlighted {m.get('sheet_color') or 'no colour'}") if "sheet_id" in m else "the shared Sheet (run migration 003 for colours)"
+    where = (f"its own tab '{m.get('task_label')}' in the ARVIS Data sheet" if m.get("sheet_id") else f"the group tab, highlighted {m.get('sheet_color') or 'no colour'}") if "sheet_id" in m else "the shared Sheet (run migration 003 for colours)"
     print(f"market {mid} {'added' if created else 'already existed'} (group: {group_of(a.niche)}). Records go to {where}. "
           f"It joins the nightly rotation; `arvisctl dispatch scrape --market {mid}` runs it now.")
 
@@ -196,8 +196,7 @@ def cmd_sheets(a):
         ms = []
     own = [m for m in ms if m.get("sheet_id")]
     if own:
-        print("Task sheets:")
-        for m in own: print(f"  · {m.get('task_label') or m['market_id']} — https://docs.google.com/spreadsheets/d/{m['sheet_id']}")
+        print("Task tabs: " + ", ".join(m.get("task_label") or m["market_id"] for m in own[:20]))
     colored = [m for m in ms if m.get("sheet_color") and not m.get("sheet_id")]
     if colored:
         print("Colours on the shared sheet: " + ", ".join(f"{m.get('task_label') or m['market_id']}={m['sheet_color']}" for m in colored[:20]))

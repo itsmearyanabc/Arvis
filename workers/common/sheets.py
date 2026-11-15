@@ -49,14 +49,15 @@ def _market_sheet_map():
     return {m["market_id"]: (m.get("sheet_id"), m.get("sheet_color"), m.get("task_label")) for m in ms}
 
 def create_sheet(title: str, share_with: Optional[str] = None) -> str:
-    """Create a new spreadsheet owned by the service account and share it with Aryan. Returns its id."""
-    gc, _ = _client()
+    """Service accounts cannot own Drive files (no storage quota), so a brand-new spreadsheet must be
+    created by Aryan and shared with the service account. This helper therefore creates a dedicated TAB
+    named after the task inside the shared spreadsheet and returns the shared spreadsheet id; the
+    market's task_label routes its rows to that tab (see mirror_leads)."""
+    gc, sid = _client()
     if not gc: raise SystemExit("Google Sheets not configured (GOOGLE_SERVICE_ACCOUNT_JSON / GOOGLE_SHEET_ID).")
-    sh = gc.create(title)
-    owner = share_with or os.environ.get("ARVIS_OWNER_EMAIL")
-    if owner:
-        sh.share(owner, perm_type="user", role="writer", notify=False)
-    return sh.id
+    sh = gc.open_by_key(sid)
+    _tab(sh, title[:90])
+    return sid
 
 def mirror_leads(since_iso: Optional[str] = None) -> int:
     """Per market: its own spreadsheet (sheet_id) or the default one; inside a spreadsheet one tab per
@@ -70,8 +71,11 @@ def mirror_leads(since_iso: Optional[str] = None) -> int:
     mmap = _market_sheet_map()
     buckets = {}  # (sheet_id, group) -> list of leads
     for r in q.execute().data:
-        sid = (mmap.get(r.get("market_id")) or (None, None, None))[0] or default_sid
-        buckets.setdefault((sid, group_of(r.get("niche"))), []).append(r)
+        sid_, _, label = mmap.get(r.get("market_id")) or (None, None, None)
+        sid = sid_ or default_sid
+        # a task with its own tab (created via --new-sheet) goes there; otherwise the niche-group tab
+        tab = label[:90] if (sid_ and label) else group_of(r.get("niche"))
+        buckets.setdefault((sid, tab), []).append(r)
     total, books = 0, {}
     for (sid, group), leads in buckets.items():
         sh = books.setdefault(sid, gc.open_by_key(sid))
