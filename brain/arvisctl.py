@@ -25,6 +25,9 @@ them into leads (status verified+). Speak of "businesses scraped", "records", "e
   arvisctl mirror                     push new records to the Google Sheet now
   arvisctl verify [--limit N]         verify unknown contact emails with self-hosted Reacher (5–15 s apart);
                                       marks leads verified / parked. Runs nightly 06:30 IST (Hermes cron, no LLM).
+  arvisctl email draft --to ADDR --subject S --body B [--name N]   store a one-off email, print it EXACTLY
+  arvisctl email send --id ID --confirm                            send it — only after Aryan said "send"
+  arvisctl email check                                             DNS + mailbox readiness for sending
   arvisctl report                     the daily Telegram report text
 Output is plain text meant to be pasted to Aryan; add --json for machine output."""
 import os, sys, json, time, argparse, datetime as dt, collections, urllib.request
@@ -260,6 +263,30 @@ def cmd_verify(a):
     summary = f"verified {len(rows)} contacts: " + ", ".join(f"{k}={v}" for k, v in counts.items()) if rows else "no contacts waiting for verification"
     log_event("brain", "info", summary); print(summary)
 
+def cmd_email(a):
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import mailer
+    try: from common.events import log_event
+    except Exception: log_event = lambda *x, **k: None
+    if a.action == "check":
+        user = os.environ.get("MAILBOX_1_USER", "connect@armedias.tech"); dom = user.split("@")[-1]
+        probs = mailer.deliverability_check(dom)
+        if not os.environ.get("MAILBOX_1_PASS"): probs.append("MAILBOX_1_PASS (Zoho app password) not set")
+        if not os.environ.get("POSTAL_ADDRESS"): probs.append("POSTAL_ADDRESS not set")
+        print("ready to send from " + user if not probs else "NOT ready: " + "; ".join(probs)); return
+    if a.action == "draft":
+        if not (a.to and a.subject and a.body): sys.exit("draft needs --to, --subject and --body")
+        sid, text = mailer.draft(db, a.to, a.subject, a.body, a.name)
+        log_event("brain", "info", f"email draft {sid[:8]} to {a.to}")
+        print(f"DRAFT {sid}\n-----\nTo: {a.to}\n{text}\n-----\nShow this to Aryan exactly. Send only after he replies 'send': arvisctl email send --id {sid} --confirm")
+        return
+    if a.action == "send":
+        if not a.confirm: sys.exit("refusing: add --confirm, and only after Aryan replied 'send' to this exact draft")
+        to, mid = mailer.send(db, a.id)
+        log_event("brain", "info", f"email sent to {to}", {"message_id": mid})
+        print(f"sent to {to} (Message-ID {mid})"); return
+    sys.exit("email action must be draft, send or check")
+
 def cmd_report(a):
     rows = db().table("leads").select("niche,city,primary_email,scraped_at,contact_quality").execute().data
     today = now().astimezone(IST).strftime("%a %d %b")
@@ -284,6 +311,8 @@ def main():
     sp.add_parser("stats"); sp.add_parser("report"); sp.add_parser("sheets"); sp.add_parser("mirror")
     sl = sp.add_parser("sheets-layout"); sl.add_argument("layout")
     vf = sp.add_parser("verify"); vf.add_argument("--limit", type=int, default=60)
+    em = sp.add_parser("email"); em.add_argument("action", choices=["draft", "send", "check"]); em.add_argument("--to"); em.add_argument("--subject")
+    em.add_argument("--body"); em.add_argument("--name"); em.add_argument("--id"); em.add_argument("--confirm", action="store_true")
     for name in ("businesses", "leads"):
         l = sp.add_parser(name); l.add_argument("--limit", type=int, default=10); l.add_argument("--market"); l.add_argument("--with-email", action="store_true"); l.add_argument("--group")
     m = sp.add_parser("markets"); m.add_argument("--status")
@@ -295,7 +324,7 @@ def main():
     a = p.parse_args()
     log_event("brain", "info", "arvisctl %s" % " ".join(sys.argv[1:])[:200], {"cmd": a.cmd})
     {"stats": cmd_stats, "leads": cmd_leads, "businesses": cmd_leads, "markets": cmd_markets, "add-market": cmd_add_market, "runs": cmd_runs,
-     "dispatch": cmd_dispatch, "sheets": cmd_sheets, "sheets-layout": cmd_sheets_layout, "mirror": cmd_mirror, "verify": cmd_verify, "report": cmd_report}[a.cmd](a)
+     "dispatch": cmd_dispatch, "sheets": cmd_sheets, "sheets-layout": cmd_sheets_layout, "mirror": cmd_mirror, "verify": cmd_verify, "email": cmd_email, "report": cmd_report}[a.cmd](a)
 
 if __name__ == "__main__":
     main()

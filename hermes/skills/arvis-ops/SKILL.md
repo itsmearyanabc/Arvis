@@ -35,6 +35,17 @@ Market ids look like `mk_<cc>_<city>_<niche>` (e.g. `mk_ca_toronto_dentist`). Sh
 city+niche by default ("Toronto — Dentist"); a task can also have its own named tab or a colour.
 Niche groups: Healthcare, Legal & Finance, Property, Home Services, Hospitality & Wellness, Education.
 
+## Sending an email Aryan asks for
+1. Write the email with Aryan's words; never invent pricing, team size, rates or minimum project
+   size; keep it short and honest.
+2. `arvisctl email draft --to "<addr>" --subject "<s>" --body "<text>"` and paste its output to
+   Aryan **exactly**, including the footer.
+3. Wait. Send only when Aryan's NEXT message clearly says "send" (or "yes, send it") about this
+   draft: `arvisctl email send --id <id> --confirm`. Any edit → new draft, show again.
+4. If send says DNS or password is not ready, tell Aryan that line; do not retry.
+Never send without that explicit reply. Never send bulk/cold sequences this way (Phase 5 does those
+with caps and warm-up). `arvisctl email check` tells whether sending is ready.
+
 ## New task = sheet allocation
 Every new scrape task (a city+niche Aryan has not asked for before) gets one question before
 anything runs: **"Its own tab in the ARVIS Data sheet, or the group tab with its own colour?"**
