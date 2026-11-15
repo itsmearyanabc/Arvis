@@ -18,6 +18,7 @@ ROLE_RE = re.compile(r"\b(owner|founder|co-founder|director|principal|managing p
 NAME_RE = re.compile(r"\b((?:Dr\.?\s+)?[A-Z][a-z]{1,20}(?:\s+[A-Z][a-z'’-]{1,20}){1,2})\b")
 SOCIAL = {"instagram.com": "instagram_url", "linkedin.com": "linkedin_url", "facebook.com": "facebook_url"}
 BRAVE = os.environ.get("BRAVE_SEARCH_API_KEY"); HUNTER = os.environ.get("HUNTER_API_KEY")
+GCSE_KEY = os.environ.get("GOOGLE_CSE_API_KEY"); GCSE_ID = os.environ.get("GOOGLE_CSE_ID")   # Programmable Search: 100 queries/day free, no card
 HUNTER_BUDGET = int(os.environ.get("HUNTER_RUN_BUDGET", "5"))   # domain searches per run (free tier: 25/mo)
 
 def fetch(url):
@@ -65,14 +66,23 @@ def extract(html_text, site_dom):
             people.append((n.strip(), m.group(1), "website"))
     return emails, people, socials
 
-def brave_search(q):
-    if not BRAVE: return []
-    try:
-        r = requests.get("https://api.search.brave.com/res/v1/web/search", params={"q": q, "count": 5},
-                         headers={"X-Subscription-Token": BRAVE, "Accept": "application/json"}, timeout=15)
-        return [(x.get("title", ""), x.get("description", ""), x.get("url", "")) for x in r.json().get("web", {}).get("results", [])]
-    except Exception:
-        return []
+def web_search(q):
+    """Public web search snippets: Google Programmable Search (free tier) first, Brave if configured."""
+    if GCSE_KEY and GCSE_ID:
+        try:
+            r = requests.get("https://www.googleapis.com/customsearch/v1", params={"key": GCSE_KEY, "cx": GCSE_ID, "q": q, "num": 5}, timeout=15).json()
+            if "items" in r:
+                return [(x.get("title", ""), x.get("snippet", ""), x.get("link", "")) for x in r["items"]]
+        except Exception:
+            pass
+    if BRAVE:
+        try:
+            r = requests.get("https://api.search.brave.com/res/v1/web/search", params={"q": q, "count": 5},
+                             headers={"X-Subscription-Token": BRAVE, "Accept": "application/json"}, timeout=15)
+            return [(x.get("title", ""), x.get("description", ""), x.get("url", "")) for x in r.json().get("web", {}).get("results", [])]
+        except Exception:
+            pass
+    return []
 
 def hunter_domain(domain):
     if not HUNTER: return []
@@ -93,7 +103,7 @@ def enrich(lead, hunter_left):
             e, pe, so = extract(h, dom); emails |= e; people += pe; socials = {**so, **socials}
             time.sleep(random.uniform(1, 3))
     # public search: owner name + sometimes an email in the snippet
-    for title, desc, url in brave_search(f'"{lead["business_name"]}" {lead.get("city","")} owner OR founder OR director'):
+    for title, desc, url in web_search(f'"{lead["business_name"]}" {lead.get("city","")} owner OR founder OR director'):
         if any(b in url for b in ("linkedin.com", "instagram.com", "facebook.com")):   # store nothing from social hosts
             continue
         for e in re.findall(r"[\w.+-]+@[\w-]+\.[\w.-]+", desc):
@@ -117,7 +127,7 @@ def enrich(lead, hunter_left):
 
 def main():
     limit = int(sys.argv[1]) if len(sys.argv) > 1 else 30
-    run_id = start_run("enrich", {"limit": limit, "brave": bool(BRAVE), "hunter": bool(HUNTER)})
+    run_id = start_run("enrich", {"limit": limit, "search": "google" if GCSE_KEY and GCSE_ID else ("brave" if BRAVE else "none"), "hunter": bool(HUNTER)})
     log_event("audit", "info", f"enrich run started (limit {limit})")
     # audited businesses not yet enriched (= no contacts rows yet); verify later moves them to verified/parked
     have = {c["lead_id"] for c in db().table("contacts").select("lead_id").execute().data}

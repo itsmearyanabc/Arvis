@@ -40,7 +40,7 @@ LLM loop, Telegram gateway, cron, skills. Everything ARVIS knows how to do lives
    armedias.com/admin gets only a LINK here (no change to that codebase)
 
  Off-box services (free): UptimeRobot (monitoring armedias.com + clients from outside,
-   alerts → Telegram) · Cal.com hosted (book.armedias.tech via CNAME) · Brave Search API ·
+   alerts → Telegram) · Cal.com hosted (book.armedias.tech via CNAME) · Google Programmable Search ·
    Hunter.io free · Gemini / Groq / OpenRouter :free LLMs
  Optional later: Render (single account) or Oracle Always-Free VM for a long-running worker
    if a job ever outgrows a GitHub Actions run.
@@ -61,7 +61,7 @@ a disk or a public port with ARVIS, and a compromised worker cannot reach the VP
   evasion of any kind. See `docs/instagram-and-linkedin.md`.
 - One account per service, used within its terms. No multi-account free-tier stacking.
 - Email lookup only from: the business's own public website, Google Maps listings, public
-  search (Brave Search API free tier), Hunter.io free tier. Verified with self-hosted Reacher.
+  search (Google Programmable Search (free, 100 queries/day)), Hunter.io free tier. Verified with self-hosted Reacher.
 - B2B targets only. Never consumer / personal addresses.
 - CAN-SPAM / CASL compliant: real postal address in every email, working unsubscribe,
   honest subject and from-name, unsubscribes honoured immediately and forever.

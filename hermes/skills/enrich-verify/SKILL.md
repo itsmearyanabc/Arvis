@@ -15,7 +15,7 @@ A lead with no verifiable email is parked, not guessed at.
   1. Business website: /contact, /about, /team, footer, `mailto:` links, schema.org JSON-LD
      (`founder`, `employee`), WHOIS is **not** used (privacy-redacted and off-limits).
   2. Google Maps listing fields already scraped (owner replies to reviews often sign a name).
-  3. Public web search (Brave Search API, free tier): `"<business name>" owner`, `"<business
+  3. Public web search (Google Programmable Search (free)): `"<business name>" owner`, `"<business
      name>" founder`, `site:<domain> @<domain>`. Public result snippets only.
   4. Hunter.io free tier: domain search (25/mo) — only for leads with `ticket_score ≥ 70`.
 - Pattern guess: if a named person is known and the domain pattern is visible from another

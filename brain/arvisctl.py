@@ -43,7 +43,7 @@ def load_env():
                     k, v = line.split("=", 1); os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
             break
 load_env()
-from common.db import db
+from common.db import db, now_iso
 from common.niches import group_of, GROUPS, normalize_niche, normalize_country
 from common.events import log_event
 

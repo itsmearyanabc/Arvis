@@ -12,7 +12,7 @@ an average-ticket estimate and a one-line why.
 
 ## Inputs
 - From Aryan (Telegram): country, optional city/region, optional niche(s), optional "surprise me".
-- Tools: Brave Search API (free tier), the GitHub Actions `scrape` workflow dispatched with
+- Tools: Google Programmable Search (free tier), the GitHub Actions `scrape` workflow dispatched with
   `max_results=20` for small probe runs, public pages only.
 
 ## Procedure
