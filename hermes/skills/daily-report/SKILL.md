@@ -16,7 +16,7 @@ cron log (failed jobs), free-tier quota usage (Brave, Hunter, Gemini, Groq, Open
 ## Daily message (≤ 20 lines)
 ```
 ARVIS daily — Thu 20 Nov
-Scraped 118 (dentists Toronto) · Audited 40 · Verified 22 (named 9)
+Scraped 118 businesses (dentists Toronto) · Audited 40 · Verified 22 (named 9)
 Drafts awaiting approval: 17  → reply "approve all" or "review"
 Sent 31/50 (step1 18, fu 13) · Bounced 0 · Unsub 1
 Replied 3 (interested 1, not_now 1, no 1) · Reply rate 7d: 4.1%

@@ -55,5 +55,17 @@ def mirror_leads(since_iso: Optional[str] = None) -> int:
         print(f"sheets mirror: +{len(rows)} leads on tab '{group}'")
     return total
 
+def list_tabs():
+    """Tabs of the ARVIS spreadsheet with row counts and direct links."""
+    gc, sid = _client()
+    if not gc:
+        return None
+    sh = gc.open_by_key(sid)
+    out = []
+    for ws in sh.worksheets():
+        rows = max(len(ws.col_values(1)) - 1, 0)
+        out.append({"tab": ws.title, "rows": rows, "url": f"https://docs.google.com/spreadsheets/d/{sid}/edit#gid={ws.id}"})
+    return {"spreadsheet": sh.title, "url": f"https://docs.google.com/spreadsheets/d/{sid}", "tabs": out}
+
 if __name__ == "__main__":
     mirror_leads(sys.argv[1] if len(sys.argv) > 1 else None)

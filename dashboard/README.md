@@ -1,22 +1,36 @@
-# ARVIS dashboard (Phase 7) — Next.js on Vercel, arvis.armedias.tech
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-Not built yet. This folder will hold a small Next.js (App Router) app:
+## Getting Started
 
-- **Auth**: Supabase Auth, email+password, a single user (Aryan). RLS in `supabase/schema.sql`
-  gives authenticated users full access and anon nothing.
-- **Pages**: Leads (filter by market/status/score), Lead detail (audit, contacts, thread),
-  Approvals (drafts awaiting `approved_by_aryan`, approve/edit/skip), Templates (edit +
-  approve), Funnel (per-market scraped → verified → sent → replied → booked), Markets
-  (activate/pause), Settings (caps, mailboxes).
-- **API routes** (serverless, service key server-side only):
-  - `GET /api/unsubscribe?token=` → adds email+domain to `unsubscribes`, stops sequences,
-    shows a plain confirmation page. Token = HMAC of sequence_id.
-  - `POST /api/webhooks/calcom` → inserts/updates `bookings`, pings the brain (Telegram via
-    Hermes webhook or a `worker_runs` row the brain polls).
-- **Link from armedias.com/admin**: a single `<a href="https://arvis.armedias.tech">` — no
-  other change to that codebase.
+First, run the development server:
 
-Setup when the phase comes: `npx create-next-app@latest dashboard --ts --app`, add
-`@supabase/supabase-js` and `@supabase/ssr`, import to Vercel with root directory `dashboard`,
-env vars from `.env.example` (NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
-SUPABASE_SERVICE_KEY, UNSUBSCRIBE_SECRET), add the domain per `docs/dns.md`.
+```bash
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+
+## Learn More
+
+To learn more about Next.js, take a look at the following resources:
+
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+
+## Deploy on Vercel
+
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

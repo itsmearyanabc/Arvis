@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #07090f;
+  --bg-2: #0c1018;
+  --panel: #0f141d;
+  --panel-2: #141b26;
+  --line: #1c2533;
+  --text: #e6ebf2;
+  --muted: #8591a3;
+  --accent: #5eead4;
+  --accent-2: #38bdf8;
+  --warn: #fbbf24;
+  --bad: #f87171;
+  --good: #34d399;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg2: var(--bg-2);
+  --color-panel: var(--panel);
+  --color-panel2: var(--panel-2);
+  --color-line: var(--line);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent2: var(--accent-2);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --color-good: var(--good);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html { color-scheme: dark; }
+body {
+  background: radial-gradient(1200px 600px at 20% -10%, #0f1a2a 0%, var(--bg) 60%);
+  color: var(--text);
+  min-height: 100dvh;
+}
+
+.card { @apply rounded-xl border border-line bg-panel/80 backdrop-blur; }
+.tile-label { @apply text-[11px] uppercase tracking-[0.14em] text-muted; }
+.btn { @apply inline-flex items-center gap-1.5 rounded-md border border-line bg-panel2 px-3 py-1.5 text-sm text-text hover:border-accent/60 hover:text-accent transition-colors disabled:opacity-50; }
+.btn-primary { @apply inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-black hover:brightness-110 transition disabled:opacity-50; }
+.input { @apply rounded-md border border-line bg-bg2 px-2.5 py-1.5 text-sm text-text placeholder:text-muted/70 focus:border-accent/60 focus:outline-none; }
+.table { @apply w-full text-sm; }
+.table th { @apply sticky top-0 z-10 bg-panel2 px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wider text-muted; }
+.table td { @apply border-t border-line/70 px-3 py-2 align-top; }
+.table tbody tr:hover { @apply bg-panel2/60; }
+.pill { @apply inline-block rounded-full border px-2 py-0.5 text-[11px] leading-4; }
+.link { @apply text-accent2 hover:underline; }
+.mono { font-family: var(--font-geist-mono), ui-monospace, monospace; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #243041; border-radius: 8px; }
