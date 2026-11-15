@@ -1,5 +1,5 @@
 "use client";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, withRealtimeAuth } from "@/lib/supabase/client";
 import type { BrainEvent, BrainSource } from "@/lib/types";
 
 export type FeedState = { recent10m: number; lastBySource: Partial<Record<BrainSource, number>>; available: boolean };
@@ -32,17 +32,21 @@ export function subscribeBrainFeed(
     onState({ ...state });
   })();
 
-  const channel = supabase
-    .channel("brain_events_feed")
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "brain_events" }, (payload) => {
-      const e = payload.new as BrainEvent;
-      state.available = true;
-      state.recent10m += 1;
-      state.lastBySource[e.source] = Date.now();
-      onState({ ...state });
-      onEvent?.(e);
-    })
-    .subscribe();
+  let channel: ReturnType<typeof supabase.channel> | null = null;
+  withRealtimeAuth(supabase).then(() => {
+    if (stopped) return;
+    channel = supabase
+      .channel(`brain_events_feed_${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "brain_events" }, (payload) => {
+        const e = payload.new as BrainEvent;
+        state.available = true;
+        state.recent10m += 1;
+        state.lastBySource[e.source] = Date.now();
+        onState({ ...state });
+        onEvent?.(e);
+      })
+      .subscribe();
+  });
 
   // decay the 10-minute window roughly once a minute
   const timer = setInterval(async () => {
@@ -52,5 +56,5 @@ export function subscribeBrainFeed(
     if (typeof count === "number") { state.recent10m = count; onState({ ...state }); }
   }, 60_000);
 
-  return () => { stopped = true; clearInterval(timer); supabase.removeChannel(channel); };
+  return () => { stopped = true; clearInterval(timer); if (channel) supabase.removeChannel(channel); };
 }

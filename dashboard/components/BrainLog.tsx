@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, withRealtimeAuth } from "@/lib/supabase/client";
 import type { BrainEvent } from "@/lib/types";
 import { SOURCE_COLORS } from "@/components/BrainCanvas";
 
@@ -16,12 +16,17 @@ export default function BrainLog({ initial, available }: { initial: BrainEvent[]
   useEffect(() => {
     if (!available) return;
     const sb = createClient();
-    const ch = sb.channel("brain_log")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "brain_events" }, (p) => {
-        setEvents((ev) => [...ev.slice(-999), p.new as BrainEvent]);
-      })
-      .subscribe((status) => setLive(status === "SUBSCRIBED" ? "live" : status === "CHANNEL_ERROR" || status === "TIMED_OUT" ? "off" : "connecting"));
-    return () => { sb.removeChannel(ch); };
+    let ch: ReturnType<typeof sb.channel> | null = null;
+    let cancelled = false;
+    withRealtimeAuth(sb).then(() => {
+      if (cancelled) return;
+      ch = sb.channel(`brain_log_${Math.random().toString(36).slice(2)}`)
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "brain_events" }, (p) => {
+          setEvents((ev) => [...ev.slice(-999), p.new as BrainEvent]);
+        })
+        .subscribe((status) => setLive(status === "SUBSCRIBED" ? "live" : status === "CHANNEL_ERROR" || status === "TIMED_OUT" ? "off" : "connecting"));
+    });
+    return () => { cancelled = true; if (ch) sb.removeChannel(ch); };
   }, [available]);
 
   useEffect(() => {
