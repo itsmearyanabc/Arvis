@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "dashboard", "runtimeExecutable": "/bin/sh", "runtimeArgs": ["-c", "export PATH=$HOME/.local/node/bin:$PATH; cd dashboard && npm run dev -- -p 3080"], "port": 3080 }
+  ]
+}
