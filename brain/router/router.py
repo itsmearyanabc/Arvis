@@ -83,6 +83,9 @@ async def chat(request):
             log.info("served by %s (%s) in %.1fs stream=%s chars=%d", name, p["model"], time.time() - t0, stream, req_chars)
             if not stream:
                 data = await resp.json(content_type=None)
+                ch = (data.get("choices") or [{}])[0]; msg = ch.get("message") or {}
+                if not data.get("choices") or (not (msg.get("content") or "").strip() and not msg.get("tool_calls")):
+                    errors.append(f"{name}: empty answer"); log.warning("failover: %s returned an empty answer", name); continue
                 data["model"] = f"arvis-router/{name}"
                 return web.json_response(data)
             out = web.StreamResponse(status=200, headers={"Content-Type": "text/event-stream", "Cache-Control": "no-cache", "X-Arvis-Provider": name})
