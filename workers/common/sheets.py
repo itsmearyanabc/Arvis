@@ -91,9 +91,41 @@ def create_sheet(title: str, share_with: Optional[str] = None) -> str:
     _tab(sh, title[:90])
     return sid
 
+LAYOUTS = ("market", "city", "group")
+
+def layout() -> str:
+    """How tabs are organised. market = one tab per city+niche ("Toronto — Dentist", default);
+    city = one tab per city; group = one tab per niche group. Set with `arvisctl sheets-layout`."""
+    v = (os.environ.get("SHEETS_LAYOUT") or "market").strip().lower()
+    return v if v in LAYOUTS else "market"
+
+def tab_for(r, mmap, lay=None):
+    sid_, _, label = mmap.get(r.get("market_id")) or (None, None, None)
+    if sid_ and label:                      # a task Aryan wanted on its own tab
+        return label[:90]
+    lay = lay or layout()
+    niche = (r.get("niche") or "").strip()
+    city = (r.get("city") or "").strip()
+    if lay == "market": return f"{city} — {niche.title()}"[:95]
+    if lay == "city": return city[:95] or "Unknown city"
+    return group_of(niche)
+
+def rebuild(lay: str) -> int:
+    """Wipe the shared spreadsheet's tabs and re-mirror everything in the given layout."""
+    gc, sid = _client()
+    if not gc: raise SystemExit("Google Sheets not configured.")
+    sh = gc.open_by_key(sid)
+    keep = sh.add_worksheet("_rebuilding", rows=2, cols=2)
+    for ws in sh.worksheets():
+        if ws.id != keep.id: sh.del_worksheet(ws)
+    os.environ["SHEETS_LAYOUT"] = lay
+    n = mirror_leads()
+    sh.del_worksheet(keep)
+    return n
+
 def mirror_leads(since_iso: Optional[str] = None) -> int:
-    """Per market: its own spreadsheet (sheet_id) or the default one; inside a spreadsheet one tab per
-    niche group; rows of a market get its highlight colour. Appends only rows not yet on the tab."""
+    """Per market: its own spreadsheet (sheet_id) or the default one; inside a spreadsheet tabs follow
+    layout(); rows of a market get its highlight colour. Appends only rows not yet on the tab."""
     gc, default_sid = _client()
     if not gc:
         print("sheets mirror: not configured, skipping"); return 0
@@ -101,13 +133,12 @@ def mirror_leads(since_iso: Optional[str] = None) -> int:
     q = db().table("leads").select(",".join(cols)).order("scraped_at")
     if since_iso: q = q.gte("scraped_at", since_iso)
     mmap = _market_sheet_map()
-    buckets = {}  # (sheet_id, group) -> list of leads
+    lay = layout()
+    buckets = {}  # (sheet_id, tab) -> list of leads
     for r in q.execute().data:
-        sid_, _, label = mmap.get(r.get("market_id")) or (None, None, None)
+        sid_, _, _label = mmap.get(r.get("market_id")) or (None, None, None)
         sid = sid_ or default_sid
-        # a task with its own tab (created via --new-sheet) goes there; otherwise the niche-group tab
-        tab = label[:90] if (sid_ and label) else group_of(r.get("niche"))
-        buckets.setdefault((sid, tab), []).append(r)
+        buckets.setdefault((sid, tab_for(r, mmap, lay)), []).append(r)
     total, books = 0, {}
     for (sid, group), leads in buckets.items():
         sh = books.setdefault(sid, gc.open_by_key(sid))
@@ -130,6 +161,11 @@ def mirror_leads(since_iso: Optional[str] = None) -> int:
             except Exception as e: print("sheets mirror: colour skipped:", str(e)[:80])
         total += len(new)
         print(f"sheets mirror: +{len(new)} records on tab '{group}' of {sh.title}")
+    # keep tabs alphabetical so cities sit together
+    try:
+        for sh in books.values():
+            ws = sh.worksheets(); sh.reorder_worksheets(sorted(ws, key=lambda w: w.title.lower()))
+    except Exception: pass
     return total
 
 def list_tabs():

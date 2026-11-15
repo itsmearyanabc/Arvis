@@ -26,13 +26,14 @@ or invent a figure without running it.
 | add <niche> in <city> to the rotation (no run now) | same question, then `arvisctl add-market --city "<city>" --niche "<niche>" [--new-sheet | --color "#HEX"] [--label "..."]` |
 | run tonight's batch now | `arvisctl dispatch scrape --count 3` |
 | audit sites now | `arvisctl dispatch audit --limit 40` |
-| list the Google Sheets / where is the data | `arvisctl sheets` → spreadsheet link + one tab per niche group with row counts and links |
+| list the Google Sheets / where is the data | `arvisctl sheets` → spreadsheet link + every tab with row counts and links |
+| organise the sheet per city / per market / per niche group | `arvisctl sheets-layout city` · `market` (default: one tab per city+niche, e.g. "Toronto — Dentist") · `group`. Rebuilds all tabs; takes ~1 min. Confirm with Aryan first if he did not ask explicitly. |
 | push data to the Google Sheet now | `arvisctl mirror` |
 | daily report | `arvisctl report` and send the text as-is |
 
-Market ids look like `mk_<cc>_<city>_<niche>` (e.g. `mk_ca_toronto_dentist`). Niche groups and
-their Sheet tabs: Healthcare, Legal & Finance, Property, Home Services, Hospitality & Wellness,
-Education (anything else → "Other").
+Market ids look like `mk_<cc>_<city>_<niche>` (e.g. `mk_ca_toronto_dentist`). Sheet tabs are per
+city+niche by default ("Toronto — Dentist"); a task can also have its own named tab or a colour.
+Niche groups: Healthcare, Legal & Finance, Property, Home Services, Hospitality & Wellness, Education.
 
 ## New task = sheet allocation
 Every new scrape task (a city+niche Aryan has not asked for before) gets one question before

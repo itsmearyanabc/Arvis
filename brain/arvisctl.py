@@ -20,7 +20,8 @@ them into leads (status verified+). Speak of "businesses scraped", "records", "e
                                       start a scrape on GitHub Actions now (needs GITHUB_TOKEN); unseeded
                                       city/niche is added as a market first
   arvisctl dispatch audit [--limit N]
-  arvisctl sheets                     list the Google Sheet tabs (one per niche group) with counts + links
+  arvisctl sheets                     list the Google Sheet tabs with counts + links
+  arvisctl sheets-layout market|city|group   reorganise ALL tabs: per city+niche (default), per city, or per niche group
   arvisctl mirror                     push new records to the Google Sheet now
   arvisctl report                     the daily Telegram report text
 Output is plain text meant to be pasted to Aryan; add --json for machine output."""
@@ -205,6 +206,17 @@ def cmd_sheets(a):
     if colored:
         print("Colours on the shared sheet: " + ", ".join(f"{m.get('task_label') or m['market_id']}={m['sheet_color']}" for m in colored[:20]))
 
+def cmd_sheets_layout(a):
+    from common.sheets import rebuild, LAYOUTS
+    if a.layout not in LAYOUTS: sys.exit(f"layout must be one of {LAYOUTS}")
+    env_path = os.environ.get("ARVIS_ENV", "/opt/arvis/.env")
+    try:  # persist the choice
+        lines = [l for l in open(env_path).read().splitlines() if not l.startswith("SHEETS_LAYOUT=")]
+        open(env_path, "w").write("\n".join(lines + [f"SHEETS_LAYOUT={a.layout}"]) + "\n")
+    except Exception as e: print("note: could not persist layout:", e)
+    n = rebuild(a.layout)
+    print(f"sheet rebuilt in '{a.layout}' layout: {n} records placed. Run `arvisctl sheets` to list tabs.")
+
 def cmd_mirror(a):
     from common.sheets import mirror_leads
     n = mirror_leads()
@@ -231,6 +243,7 @@ def main():
     p = argparse.ArgumentParser(prog="arvisctl"); p.add_argument("--json", action="store_true")
     sp = p.add_subparsers(dest="cmd", required=True)
     sp.add_parser("stats"); sp.add_parser("report"); sp.add_parser("sheets"); sp.add_parser("mirror")
+    sl = sp.add_parser("sheets-layout"); sl.add_argument("layout")
     for name in ("businesses", "leads"):
         l = sp.add_parser(name); l.add_argument("--limit", type=int, default=10); l.add_argument("--market"); l.add_argument("--with-email", action="store_true"); l.add_argument("--group")
     m = sp.add_parser("markets"); m.add_argument("--status")
@@ -242,7 +255,7 @@ def main():
     a = p.parse_args()
     log_event("brain", "info", "arvisctl %s" % " ".join(sys.argv[1:])[:200], {"cmd": a.cmd})
     {"stats": cmd_stats, "leads": cmd_leads, "businesses": cmd_leads, "markets": cmd_markets, "add-market": cmd_add_market, "runs": cmd_runs,
-     "dispatch": cmd_dispatch, "sheets": cmd_sheets, "mirror": cmd_mirror, "report": cmd_report}[a.cmd](a)
+     "dispatch": cmd_dispatch, "sheets": cmd_sheets, "sheets-layout": cmd_sheets_layout, "mirror": cmd_mirror, "report": cmd_report}[a.cmd](a)
 
 if __name__ == "__main__":
     main()
