@@ -7,6 +7,28 @@ from common.db import db, finish_run, now_iso
 
 SOCIAL = {"instagram.com": "instagram_url", "linkedin.com": "linkedin_url", "facebook.com": "facebook_url"}
 
+JUNK_DOMAINS = ("sentry", "wixpress", "wix.com", "example.com", "domain.com", "email.com", "yourdomain",
+                "godaddy", "squarespace", "shopify", "schema.org", "w3.org", "googleapis", "gstatic",
+                "cloudflare", "jquery", "bootstrap", "fontawesome", "mysite.com", "website.com")
+JUNK_LOCAL = ("noreply", "no-reply", "donotreply", "mailer-daemon", "postmaster", "abuse", "privacy",
+              "unsubscribe", "webmaster", "dmarc", "sentry", "u003e", "wixpress")
+GENERIC = ("info", "contact", "hello", "office", "admin", "enquiries", "inquiries", "reception",
+           "frontdesk", "smile", "smiles", "team", "mail", "support", "bookings", "appointments")
+EMAIL_RE = re.compile(r"^[a-z0-9._%+-]{1,64}@[a-z0-9.-]+\.[a-z]{2,24}$")
+
+def clean_email(e):
+    """Return a plausible business email or None. Drops image names, tracker addresses, placeholders."""
+    e = (e or "").strip().strip(".,;:<>()[]\"'").lower()
+    if not EMAIL_RE.match(e): return None
+    local, dom = e.split("@", 1)
+    if re.search(r"\.(png|jpg|jpeg|gif|svg|webp|css|js|pdf|woff2?)$", dom) or re.search(r"@\dx\.", e): return None
+    if any(j in dom for j in JUNK_DOMAINS) or any(j in local for j in JUNK_LOCAL): return None
+    if len(local) >= 24 and re.fullmatch(r"[0-9a-f]+", local): return None     # hex ids
+    return e
+
+def email_quality(e):
+    return "generic" if e.split("@")[0] in GENERIC else "named"
+
 def to_int(v):
     try: return int(float(v))
     except Exception: return None
@@ -49,15 +71,20 @@ def main():
                 "website": (r.get("website") or None), "rating": r.get("review_rating") or None,
                 "review_count": to_int(r.get("review_count")), "maps_url": r.get("link"),
                 "source": "google_maps", "ticket_score": ticket_score(r), "fit_score": fit_score(r, market),
-                "contact_quality": "named" if r.get("owner") else "none",
-                "notes": ("owner: " + r["owner"]) if r.get("owner") else None,
+                "contact_quality": "none",
+                "notes": ("maps owner field: " + r["owner"]) if r.get("owner") else None,
                 "scraped_at": now_iso(),
             }
-            emails = [e for e in re.split(r"[,; ]+", r.get("emails") or "") if "@" in e]
+            emails = [c for c in (clean_email(e) for e in re.split(r"[,; ]+", r.get("emails") or "")) if c]
+            # prefer a named address over a generic one, and the site's own domain over others
+            site_dom = re.sub(r"^https?://(www\.)?", "", r.get("website") or "").split("/")[0].lower()
+            emails.sort(key=lambda e: (email_quality(e) != "named", site_dom not in e))
             if emails:
                 lead["primary_email"] = emails[0]
                 lead["email_source"] = "website"   # gosom -email reads the business's own site
-                lead["contact_quality"] = "generic" if emails[0].split("@")[0] in ("info", "contact", "hello", "office", "admin") else "named"
+                lead["contact_quality"] = email_quality(emails[0])
+            else:
+                lead["contact_quality"] = "none"   # an owner name alone is not a contact yet
             for host, col in SOCIAL.items():
                 m = re.search(r"https?://(?:www\.)?" + re.escape(host) + r"/[\w./-]+", r.get("about", "") + " " + r.get("website", ""))
                 if m: lead[col] = m.group(0)
