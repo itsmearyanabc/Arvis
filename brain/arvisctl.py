@@ -10,7 +10,11 @@ them into leads (status verified+). Speak of "businesses scraped", "records", "e
   arvisctl stats                      totals: businesses scraped, with email, named/generic, last 24h, per group
   arvisctl businesses [--limit N] [--market ID] [--with-email] [--group NAME]   (alias: leads)
   arvisctl markets [--status active]  markets with record counts and last scrape
-  arvisctl add-market --country C --city CITY --niche NICHE   seed a new market (idempotent)
+  arvisctl add-market --country C --city CITY --niche NICHE [--new-sheet | --color #HEX] [--label "task name"]
+                                      seed a new market (idempotent). Sheet allocation for this TASK:
+                                      --new-sheet  → its own Google Sheet (created + shared with Aryan)
+                                      --color      → rows highlighted in that colour on the shared Sheet
+                                      (neither → next free palette colour on the shared Sheet)
   arvisctl runs [--limit N]           recent worker runs (scrape/audit) with counts
   arvisctl dispatch scrape [--market ID | --city CITY --niche NICHE [--country C]] [--count N]
                                       start a scrape on GitHub Actions now (needs GITHUB_TOKEN); unseeded
@@ -110,29 +114,57 @@ COUNTRY_GUESS = {"toronto": "Canada", "vancouver": "Canada", "montreal": "Canada
                  "dubai": "United Arab Emirates", "abu dhabi": "United Arab Emirates", "new york": "United States",
                  "los angeles": "United States", "chicago": "United States", "singapore": "Singapore", "dublin": "Ireland"}
 
-def add_market(country, city, niche):
+def _sheet_alloc(a, mid):
+    """Decide where this task's records go in Google Sheets. Returns dict of market columns to set."""
+    from common.sheets import PALETTE, create_sheet
+    label = getattr(a, "label", None) or mid
+    if getattr(a, "new_sheet", False):
+        sid = create_sheet(f"ARVIS — {label}")
+        return {"sheet_id": sid, "sheet_color": None, "task_label": label}
+    color = getattr(a, "color", None)
+    if not color:
+        used = [m["sheet_color"] for m in db().table("markets").select("sheet_color").neq("sheet_color", "").execute().data]
+        color = next((c for c in PALETTE if c not in used), PALETTE[hash(mid) % len(PALETTE)])
+    return {"sheet_id": None, "sheet_color": color, "task_label": label}
+
+def add_market(country, city, niche, a=None):
     country = country or COUNTRY_GUESS.get(city.lower())
     if not country: sys.exit(f"Which country is {city} in? Re-run with --country.")
     mid = f"mk_{_slug(country)[:2]}_{_slug(city)}_{_slug(niche)}"
     exists = db().table("markets").select("market_id,status").eq("market_id", mid).execute().data
+    extra = {}
+    if a is not None and (getattr(a, "new_sheet", False) or getattr(a, "color", None) or getattr(a, "label", None) or not exists):
+        try: extra = _sheet_alloc(a, mid)
+        except SystemExit as e: print(f"note: {e}"); extra = {}
+        except Exception as e: print("note: sheet allocation skipped (run supabase/migrations_003_market_sheets.sql)"); extra = {}
     if exists:
-        if exists[0]["status"] != "active":
-            db().table("markets").update({"status": "active"}).eq("market_id", mid).execute()
+        upd = {**extra}
+        if exists[0]["status"] != "active": upd["status"] = "active"
+        if upd:
+            try: db().table("markets").update(upd).eq("market_id", mid).execute()
+            except Exception: db().table("markets").update({k: v for k, v in upd.items() if k == "status"}).eq("market_id", mid).execute()
         return mid, False
-    db().table("markets").insert({"market_id": mid, "country": country, "city": city.title(), "niche": niche.lower(),
-                                  "status": "active", "rationale": f"group: {group_of(niche)}; added on request {now().date()}"}).execute()
+    row = {"market_id": mid, "country": country, "city": city.title(), "niche": niche.lower(), "status": "active",
+           "rationale": f"group: {group_of(niche)}; added on request {now().date()}", **extra}
+    try: db().table("markets").insert(row).execute()
+    except Exception:  # migration 003 not applied yet: insert without sheet columns
+        for k in ("sheet_id", "sheet_color", "task_label"): row.pop(k, None)
+        db().table("markets").insert(row).execute()
     return mid, True
 
 def cmd_add_market(a):
-    mid, created = add_market(a.country, a.city, a.niche)
-    print(f"market {mid} {'added' if created else 'already existed'} (group: {group_of(a.niche)}). It joins the nightly rotation; `arvisctl dispatch scrape --market {mid}` runs it now.")
+    mid, created = add_market(a.country, a.city, a.niche, a)
+    m = db().table("markets").select("*").eq("market_id", mid).single().execute().data
+    where = (f"its own Google Sheet (id {m['sheet_id']})" if m.get("sheet_id") else f"the shared Sheet, highlighted {m.get('sheet_color') or 'no colour'}") if "sheet_id" in m else "the shared Sheet (run migration 003 for colours)"
+    print(f"market {mid} {'added' if created else 'already existed'} (group: {group_of(a.niche)}). Records go to {where}. "
+          f"It joins the nightly rotation; `arvisctl dispatch scrape --market {mid}` runs it now.")
 
 def cmd_dispatch(a):
     tok, repo = os.environ.get("GITHUB_TOKEN"), os.environ.get("GITHUB_REPO", "itsmearyanabc/Arvis")
     inputs = {}
     if a.worker == "scrape":
         if a.city and a.niche and not a.market:
-            a.market, created = add_market(a.country, a.city, a.niche)
+            a.market, created = add_market(a.country, a.city, a.niche, a)
             print(f"market {a.market} {'added' if created else 'found'}")
         if a.market: inputs["market_id"] = a.market
         if a.count: inputs["count"] = str(a.count)
@@ -156,8 +188,19 @@ def cmd_sheets(a):
     info = list_tabs()
     if info is None: sys.exit("Google Sheet not configured yet: GOOGLE_SERVICE_ACCOUNT_JSON and GOOGLE_SHEET_ID missing in /opt/arvis/.env.")
     if a.json: return print(json.dumps(info, indent=2))
-    print(f"Spreadsheet: {info['spreadsheet']} — {info['url']}")
+    print(f"Shared spreadsheet: {info['spreadsheet']} — {info['url']}")
     for t in info["tabs"]: print(f"  · {t['tab']}: {t['rows']} rows — {t['url']}")
+    try:
+        ms = db().table("markets").select("market_id,task_label,sheet_id,sheet_color").execute().data
+    except Exception:
+        ms = []
+    own = [m for m in ms if m.get("sheet_id")]
+    if own:
+        print("Task sheets:")
+        for m in own: print(f"  · {m.get('task_label') or m['market_id']} — https://docs.google.com/spreadsheets/d/{m['sheet_id']}")
+    colored = [m for m in ms if m.get("sheet_color") and not m.get("sheet_id")]
+    if colored:
+        print("Colours on the shared sheet: " + ", ".join(f"{m.get('task_label') or m['market_id']}={m['sheet_color']}" for m in colored[:20]))
 
 def cmd_mirror(a):
     from common.sheets import mirror_leads
@@ -189,8 +232,10 @@ def main():
         l = sp.add_parser(name); l.add_argument("--limit", type=int, default=10); l.add_argument("--market"); l.add_argument("--with-email", action="store_true"); l.add_argument("--group")
     m = sp.add_parser("markets"); m.add_argument("--status")
     am = sp.add_parser("add-market"); am.add_argument("--country"); am.add_argument("--city", required=True); am.add_argument("--niche", required=True)
+    am.add_argument("--new-sheet", action="store_true"); am.add_argument("--color"); am.add_argument("--label")
     r = sp.add_parser("runs"); r.add_argument("--limit", type=int, default=10)
     d = sp.add_parser("dispatch"); d.add_argument("worker", choices=["scrape", "audit"]); d.add_argument("--market"); d.add_argument("--city"); d.add_argument("--niche"); d.add_argument("--country"); d.add_argument("--count", type=int); d.add_argument("--limit", type=int)
+    d.add_argument("--new-sheet", action="store_true"); d.add_argument("--color"); d.add_argument("--label")
     a = p.parse_args()
     log_event("brain", "info", "arvisctl %s" % " ".join(sys.argv[1:])[:200], {"cmd": a.cmd})
     {"stats": cmd_stats, "leads": cmd_leads, "businesses": cmd_leads, "markets": cmd_markets, "add-market": cmd_add_market, "runs": cmd_runs,

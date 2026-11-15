@@ -22,8 +22,8 @@ or invent a figure without running it.
 | show me records (with email / a market / a group) | `arvisctl businesses --limit 10 --with-email` · `--market mk_un_london_dentist` · `--group "Healthcare"` |
 | which markets / what's next tonight | `arvisctl markets --status active` |
 | did last night's run work | `arvisctl runs --limit 10` |
-| scrape <niche> in <city> (now) | `arvisctl dispatch scrape --city "<city>" --niche "<niche>"` (add `--country "<c>"` if the city is not well known). Unseeded markets are created automatically. |
-| add <niche> in <city> to the rotation (no run now) | `arvisctl add-market --city "<city>" --niche "<niche>" [--country "<c>"]` |
+| scrape <niche> in <city> (now) | FIRST ask: "New Google Sheet for this task, or the existing one with its own colour?" (default: existing + colour). Then `arvisctl dispatch scrape --city "<city>" --niche "<niche>" [--new-sheet | --color "#HEX"] [--label "<task name>"]` (add `--country "<c>"` if the city is not well known). Unseeded markets are created automatically. |
+| add <niche> in <city> to the rotation (no run now) | same question, then `arvisctl add-market --city "<city>" --niche "<niche>" [--new-sheet | --color "#HEX"] [--label "..."]` |
 | run tonight's batch now | `arvisctl dispatch scrape --count 3` |
 | audit sites now | `arvisctl dispatch audit --limit 40` |
 | list the Google Sheets / where is the data | `arvisctl sheets` → spreadsheet link + one tab per niche group with row counts and links |
@@ -33,6 +33,13 @@ or invent a figure without running it.
 Market ids look like `mk_<cc>_<city>_<niche>` (e.g. `mk_ca_toronto_dentist`). Niche groups and
 their Sheet tabs: Healthcare, Legal & Finance, Property, Home Services, Hospitality & Wellness,
 Education (anything else → "Other").
+
+## New task = sheet allocation
+Every new scrape task (a city+niche Aryan has not asked for before) gets one question before
+anything runs: **"New Google Sheet for this task, or the existing one with its own colour?"**
+If Aryan says new → `--new-sheet` (ARVIS creates it and shares it with him; `arvisctl sheets`
+lists it). If he says existing or does not care → no flag, a free palette colour is assigned,
+or `--color "#HEX"` if he names one. Tell him which colour/sheet the task got.
 
 ## How to answer
 - Short. Numbers first, then one line of context. Paste `arvisctl businesses` lines as they
