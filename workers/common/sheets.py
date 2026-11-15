@@ -15,13 +15,45 @@ LEAD_COLS = ["lead_id", "business_name", "niche", "city", "country", "phone", "w
 
 def _client():
     raw = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON"); sid = os.environ.get("GOOGLE_SHEET_ID")
-    if not raw or not sid:
+    if not raw:
+        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        candidates = [os.environ.get("ARVIS_ENV"), "/opt/arvis/.env", os.path.join(root, ".env")]
+        for p in candidates:
+            if p and os.path.exists(p):
+                for line in open(p):
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1); os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+                break
+        raw = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON"); sid = os.environ.get("GOOGLE_SHEET_ID")
+    if not raw:
         return None, None
     import gspread
     from google.oauth2.service_account import Credentials
+    if not raw.strip().startswith("{") and not os.path.isabs(raw):
+        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        candidate = os.path.join(root, raw)
+        if os.path.exists(candidate):
+            raw = candidate
     info = json.loads(raw) if raw.strip().startswith("{") else json.load(open(raw))
-    creds = Credentials.from_service_account_info(info, scopes=["https://www.googleapis.com/auth/spreadsheets"])
-    return gspread.authorize(creds), sid
+    creds = Credentials.from_service_account_info(
+        info,
+        scopes=[
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive",
+        ],
+    )
+    gc = gspread.authorize(creds)
+    if not sid:
+        try:
+            for f in gc.list_spreadsheet_files():
+                name = (f.get("name") or "").strip().lower()
+                if name in ("arvis data", "arvis — data", "arvis_data"):
+                    sid = f["id"]
+                    break
+        except Exception:
+            pass
+    return gc, sid
 
 def _tab(sh, name):
     try:

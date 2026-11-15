@@ -30,12 +30,15 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "workers"))
 
 def load_env():
-    path = os.environ.get("ARVIS_ENV", "/opt/arvis/.env")
-    if os.path.exists(path):
-        for line in open(path):
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                k, v = line.split("=", 1); os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+    path = os.environ.get("ARVIS_ENV")
+    candidates = [path] if path else ["/opt/arvis/.env", os.path.join(ROOT, ".env")]
+    for p in candidates:
+        if p and os.path.exists(p):
+            for line in open(p):
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1); os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+            break
 load_env()
 from common.db import db
 from common.niches import group_of, GROUPS
