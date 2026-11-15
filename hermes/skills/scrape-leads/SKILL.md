@@ -18,10 +18,9 @@ Google Maps listings only. The browser work runs on a GitHub Actions runner
 
 ## Procedure
 1. Pick the active market with the oldest `last_scraped_at`.
-2. Dispatch the `scrape` workflow for that market (the schedule also fires it at 02:00 IST;
-   dispatch only if no run happened in the last 20 h).
-3. Poll the run via the GitHub API with exponential backoff (1 → 10 min); on failure read the
-   `worker_runs` row / run log and report.
+2. Dispatch with `arvisctl dispatch scrape --market <id>` (see `arvis-ops`). The GitHub schedule
+   also fires it at 02:00 IST; dispatch only when Aryan asks or no run happened in 20 h.
+3. Check later with `arvisctl runs`; on failure report the error line to Aryan.
 4. The worker skips existing `place_id`s and consumer / private-person listings (no business
    category). Nothing else is filtered at this stage.
 5. The worker computes:

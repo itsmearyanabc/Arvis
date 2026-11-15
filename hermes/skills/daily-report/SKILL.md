@@ -37,9 +37,10 @@ reply rate, best niche, cap recommendation (only ever "hold" or "+10" per rules 
 next markets from `market-research`.
 
 ## Procedure
-1. Pull counts for yesterday (local tz) and trailing 7 days from Supabase.
-2. Compose with the template above; omit sections with nothing to say.
-3. Send to Aryan's Telegram id. If Supabase is unreachable, send a one-line failure note instead.
+1. Run `arvisctl report` (see `arvis-ops`). It builds the message from live Supabase data.
+2. Send its output to Aryan as-is (Telegram home channel). Add nothing, invent nothing.
+3. If `arvisctl` fails, send one line: "Daily report failed: <error>".
+Phases not yet live print as zeros; that is correct, not a bug.
 
 ## Outputs
 Telegram message; a row in **Reports** (`date, scraped, audited, verified, drafts_pending,

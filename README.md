@@ -95,6 +95,8 @@ README.md                    this file
 vps/01-create-user.sh        arvis user, /opt/arvis, slice caps, swapfile
 vps/02-install-docker.sh     docker daemon.json (cgroup parent, log caps); docker already installed
 vps/03-install-hermes.sh     Hermes install + Telegram gateway, as arvis
+vps/04-install-brain.sh      venv + arvisctl (the brain's Supabase/GitHub hands) + daily-report cron
+brain/arvisctl.py            stats · leads · markets · runs · dispatch · report (reads /opt/arvis/.env)
 docker/docker-compose.yml    reacher only
 supabase/schema.sql          all tables (run once in the Supabase SQL editor)
 workers/                     Python workers run by GitHub Actions (scrape, audit, enrich)
