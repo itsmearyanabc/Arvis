@@ -41,7 +41,7 @@ def load_env():
             break
 load_env()
 from common.db import db
-from common.niches import group_of, GROUPS
+from common.niches import group_of, GROUPS, normalize_niche, normalize_country
 from common.events import log_event
 
 IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
@@ -131,7 +131,8 @@ def _sheet_alloc(a, mid):
     return {"sheet_id": None, "sheet_color": color, "task_label": label}
 
 def add_market(country, city, niche, a=None):
-    country = country or COUNTRY_GUESS.get(city.lower())
+    niche = normalize_niche(niche); city = (city or "").strip()
+    country = normalize_country(country) if country else COUNTRY_GUESS.get(city.lower())
     if not country: sys.exit(f"Which country is {city} in? Re-run with --country.")
     mid = f"mk_{_slug(country)[:2]}_{_slug(city)}_{_slug(niche)}"
     exists = db().table("markets").select("market_id,status").eq("market_id", mid).execute().data

@@ -32,8 +32,29 @@ GROUPS = {
 NICHE_TO_GROUP = {niche: group for group, niches in GROUPS.items() for niche in niches}
 SYNONYMS = {niche: syns for niches in GROUPS.values() for niche, syns in niches.items()}
 
+COUNTRY_ALIASES = {"uae": "United Arab Emirates", "united arab emirates": "United Arab Emirates", "uk": "United Kingdom",
+                   "united kingdom": "United Kingdom", "england": "United Kingdom", "usa": "United States", "us": "United States",
+                   "united states": "United States", "america": "United States", "canada": "Canada", "australia": "Australia",
+                   "india": "India", "singapore": "Singapore", "ireland": "Ireland", "new zealand": "New Zealand"}
+
+def normalize_country(c: str) -> str:
+    c = (c or "").strip()
+    return COUNTRY_ALIASES.get(c.lower(), c.title() if c else c)
+
+def normalize_niche(n: str) -> str:
+    """Map free text ("interior designers", "Dentists", "law firms") onto a known niche key when possible."""
+    n = (n or "").strip().lower()
+    if n in SYNONYMS: return n
+    cands = {n, n[:-1] if n.endswith("s") else n + "s", n[:-2] if n.endswith("es") else n}
+    for niche, syns in SYNONYMS.items():
+        pool = {niche, niche + "s"} | set(syns) | {s + "s" for s in syns}
+        if cands & pool: return niche
+    for niche in SYNONYMS:            # substring match: "dental" -> dentist, "interior designers" -> interior design
+        if niche in n or n in niche: return niche
+    return n
+
 def group_of(niche: str) -> str:
-    return NICHE_TO_GROUP.get((niche or "").lower(), "Other")
+    return NICHE_TO_GROUP.get(normalize_niche(niche), "Other")
 
 def synonyms_of(niche: str):
     return SYNONYMS.get((niche or "").lower(), [niche])
