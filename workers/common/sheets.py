@@ -10,7 +10,8 @@ from common.niches import group_of
 
 LEAD_COLS = ["lead_id", "business_name", "niche", "city", "country", "phone", "website", "rating",
              "review_count", "fit_score", "ticket_score", "contact_quality", "primary_email",
-             "top_issue", "status", "maps_url", "instagram_url", "linkedin_url", "scraped_at"]
+             "email_source", "source", "maps_url", "top_issue", "status", "instagram_url",
+             "linkedin_url", "scraped_at"]
 
 def _client():
     raw = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON"); sid = os.environ.get("GOOGLE_SHEET_ID")

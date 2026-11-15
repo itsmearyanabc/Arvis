@@ -23,7 +23,9 @@ create table if not exists leads (
   source text not null default 'google_maps',
   fit_score int default 0, ticket_score int default 0,
   contact_quality text default 'none' check (contact_quality in ('named','generic','none')),
-  primary_email text, runs_meta_ads boolean,
+  primary_email text,
+  email_source text,            -- website | maps | web_search | hunter | pattern | manual
+  runs_meta_ads boolean,
   top_issue text, audit_summary text,
   status text not null default 'new' check (status in
     ('new','audited','verified','parked','drafted','in_sequence','replied','booked','won','lost','unsubscribed')),

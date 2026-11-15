@@ -56,13 +56,21 @@ def main():
             emails = [e for e in re.split(r"[,; ]+", r.get("emails") or "") if "@" in e]
             if emails:
                 lead["primary_email"] = emails[0]
+                lead["email_source"] = "website"   # gosom -email reads the business's own site
                 lead["contact_quality"] = "generic" if emails[0].split("@")[0] in ("info", "contact", "hello", "office", "admin") else "named"
             for host, col in SOCIAL.items():
                 m = re.search(r"https?://(?:www\.)?" + re.escape(host) + r"/[\w./-]+", r.get("about", "") + " " + r.get("website", ""))
                 if m: lead[col] = m.group(0)
             rows.append(lead)
+    def upsert(batch):
+        try:
+            db().table("leads").upsert(batch, on_conflict="place_id", ignore_duplicates=True).execute()
+        except Exception as e:  # email_source column not migrated yet -> retry without it
+            if "email_source" not in str(e): raise
+            for r in batch: r.pop("email_source", None)
+            db().table("leads").upsert(batch, on_conflict="place_id", ignore_duplicates=True).execute()
     for i in range(0, len(rows), 200):
-        db().table("leads").upsert(rows[i:i+200], on_conflict="place_id", ignore_duplicates=True).execute()
+        upsert(rows[i:i+200])
     db().table("markets").update({"last_scraped_at": now_iso(), "businesses_found": len(existing)}).eq("market_id", market_id).execute()
     finish_run(run_id, {"new_leads": len(rows), "skipped_non_business": skipped, "market_id": market_id})
     print(f"inserted {len(rows)} leads, skipped {skipped}")
