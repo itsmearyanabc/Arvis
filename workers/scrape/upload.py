@@ -1,7 +1,7 @@
 """Upsert gosom CSV output into Supabase leads with scoring and dedup.
 Usage: python -I workers/scrape/upload.py results.csv <market_id> <run_id>
 Never writes consumer listings (no category) and never re-inserts an existing place_id."""
-import sys, os, csv, re, hashlib
+import sys, os, csv, re, json, hashlib
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from common.db import db, finish_run, now_iso
 from common.events import log_event
@@ -26,6 +26,24 @@ def clean_email(e):
     if any(j in dom for j in JUNK_DOMAINS) or any(j in local for j in JUNK_LOCAL): return None
     if len(local) >= 24 and re.fullmatch(r"[0-9a-f]+", local): return None     # hex ids
     return e
+
+def _j(v):
+    try: return json.loads(v) if v and v not in ("null", "[]", "{}") else None
+    except Exception: return None
+
+def extras(r):
+    """Business facts worth keeping. Reviewer names/photos are NOT stored (private individuals)."""
+    reviews = []
+    for rv in (_j(r.get("user_reviews")) or [])[:5]:
+        txt = (rv.get("Description") or "").strip()
+        if txt: reviews.append({"rating": rv.get("Rating"), "text": txt[:280]})
+        if len(reviews) == 2: break
+    booking = bool(_j(r.get("order_online")) or _j(r.get("reservations")))
+    out = {"category": r.get("category") or None, "open_hours": _j(r.get("open_hours")),
+           "price_range": r.get("price_range") or None, "description": (r.get("descriptions") or "")[:500] or None,
+           "online_booking": booking, "lat": r.get("latitude") or None, "lng": r.get("longitude") or None,
+           "review_excerpts": reviews or None}
+    return {k: v for k, v in out.items() if v not in (None, "", [])}
 
 def email_quality(e):
     return "generic" if e.split("@")[0] in GENERIC else "named"
@@ -76,6 +94,7 @@ def main():
                 "contact_quality": "none",
                 "notes": ("maps owner field: " + r["owner"]) if r.get("owner") else None,
                 "scraped_at": now_iso(),
+                "extra": extras(r), "timezone": r.get("timezone") or None,
             }
             emails = [c for c in (clean_email(e) for e in re.split(r"[,; ]+", r.get("emails") or "")) if c]
             # prefer a named address over a generic one, and the site's own domain over others
@@ -94,9 +113,10 @@ def main():
     def upsert(batch):
         try:
             db().table("leads").upsert(batch, on_conflict="place_id", ignore_duplicates=True).execute()
-        except Exception as e:  # email_source column not migrated yet -> retry without it
-            if "email_source" not in str(e): raise
-            for r in batch: r.pop("email_source", None)
+        except Exception as e:  # newer columns not migrated yet -> retry without them
+            if not any(c in str(e) for c in ("email_source", "extra", "timezone")): raise
+            for r in batch:
+                for c in ("email_source", "extra", "timezone"): r.pop(c, None)
             db().table("leads").upsert(batch, on_conflict="place_id", ignore_duplicates=True).execute()
     for i in range(0, len(rows), 200):
         upsert(rows[i:i+200])

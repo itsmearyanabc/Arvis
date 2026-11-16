@@ -6,6 +6,7 @@ import requests
 from bs4 import BeautifulSoup
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from common.db import db, start_run, finish_run, now_iso
+from common import render
 
 UA = "ARVIS-audit/1.0 (+https://armedias.com; site health check)"
 PSI = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
@@ -27,17 +28,19 @@ def audit(lead):
     if not url.startswith("http"): url = "https://" + url
     a = {"lead_id": lead["lead_id"], "website": url, "checked_at": now_iso()}
     try:
-        r = fetch(url)
+        r, html, rendered = render.fetch(url)
     except requests.exceptions.SSLError:
         a["ssl_ok"] = False
-        try: r = fetch(url.replace("https://", "http://"))
+        try: r, html, rendered = render.fetch(url.replace("https://", "http://"))
         except Exception: a["site_status"] = "down"; return a
-    except Exception:
+    if r is None and not html:
         a["site_status"] = "down"; return a
-    a["site_status"] = "ok" if r.status_code < 500 else "down"
-    a.setdefault("ssl_ok", r.url.startswith("https://"))
-    a["https_redirect"] = r.url.startswith("https://")
-    html = r.text[:600_000]; soup = BeautifulSoup(html, "html.parser")
+    a["site_status"] = "ok" if (r is None or r.status_code < 500) else "down"
+    final_url = r.url if r is not None else url
+    a.setdefault("ssl_ok", final_url.startswith("https://"))
+    a["https_redirect"] = final_url.startswith("https://")
+    a["rendered_with_browser"] = rendered
+    html = (html or "")[:600_000]; soup = BeautifulSoup(html, "html.parser")
     a["has_title"] = bool(soup.title and soup.title.string and soup.title.string.strip())
     a["has_meta_desc"] = bool(soup.find("meta", attrs={"name": re.compile("^description$", re.I)}))
     a["h1_count"] = len(soup.find_all("h1"))
@@ -80,11 +83,15 @@ def main():
     try:
         for lead in leads:
             a = audit(lead)
-            db().table("audits").insert(a).execute()
+            try: db().table("audits").insert(a).execute()
+            except Exception as e:   # migration 004 not applied yet
+                if "rendered_with_browser" not in str(e): raise
+                a.pop("rendered_with_browser", None); db().table("audits").insert(a).execute()
             db().table("leads").update({"status": "audited", "ticket_score": bump(lead, a), "top_issue": a.get("top_issue"),
                                         "audit_summary": a.get("audit_summary"), "updated_at": now_iso()}).eq("lead_id", lead["lead_id"]).execute()
             done += 1
             time.sleep(random.uniform(5, 20))
+        render.close()
         finish_run(run_id, {"audited": done})
     except Exception as e:
         finish_run(run_id, {"audited": done}, error=str(e)); raise

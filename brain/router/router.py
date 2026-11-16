@@ -50,7 +50,14 @@ PORT = int(E("ROUTER_PORT", "8090"))
 RETRY_STATUSES = {408, 409, 425, 429, 500, 502, 503, 504, 529}
 COOLDOWN = {}   # provider -> unix time until which it is skipped (after a 429)
 
-logging.basicConfig(filename=E("ROUTER_LOG") or None, level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+_handlers = [logging.StreamHandler(sys.stdout)]          # -> systemd journal
+if E("ROUTER_LOG"):
+    try:
+        os.makedirs(os.path.dirname(E("ROUTER_LOG")), exist_ok=True)
+        _handlers.append(logging.FileHandler(E("ROUTER_LOG")))
+    except Exception as _e:
+        print("router: cannot open log file:", _e, flush=True)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", handlers=_handlers, force=True)
 log = logging.getLogger("router")
 
 def active_providers(req_chars):
@@ -218,5 +225,5 @@ app = web.Application(client_max_size=64 * 1024 * 1024)
 app.add_routes([web.post("/v1/chat/completions", chat), web.get("/v1/models", models), web.get("/health", health)])
 
 if __name__ == "__main__":
-    print(f"arvis-router on 127.0.0.1:{PORT}; order={ORDER}; configured={[n for n in ORDER if PROVIDERS[n]['key']]}", flush=True)
+    log.info("arvis-router on 127.0.0.1:%s; order=%s; configured=%s", PORT, ORDER, [n for n in ORDER if PROVIDERS[n]["key"]])
     web.run_app(app, host="127.0.0.1", port=PORT, print=None, access_log=None)

@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scrape"))
 from common.db import db, start_run, finish_run, now_iso
 from common.events import log_event
+from common import render
 from upload import clean_email, email_quality
 
 UA = "ARVIS-enrich/1.0 (+https://armedias.com; business contact lookup)"
@@ -21,10 +22,10 @@ BRAVE = os.environ.get("BRAVE_SEARCH_API_KEY"); HUNTER = os.environ.get("HUNTER_
 GCSE_KEY = os.environ.get("GOOGLE_CSE_API_KEY"); GCSE_ID = os.environ.get("GOOGLE_CSE_ID")   # Programmable Search: 100 queries/day free, no card
 HUNTER_BUDGET = int(os.environ.get("HUNTER_RUN_BUDGET", "5"))   # domain searches per run (free tier: 25/mo)
 
-def fetch(url):
+def fetch(url, browser=True):
     try:
-        r = requests.get(url, headers={"User-Agent": UA}, timeout=15, allow_redirects=True)
-        return r.text if r.status_code < 400 and "text/html" in r.headers.get("content-type", "") else ""
+        r, html, _ = render.fetch(url, allow_browser=browser)
+        return html if (r is None or r.status_code < 400) else ""
     except Exception:
         return ""
 
@@ -97,8 +98,8 @@ def enrich(lead, hunter_left):
     emails, people, socials = set(), [], {}
     dom = re.sub(r"^https?://(www\.)?", "", root or "").split("/")[0].lower()
     if root:
-        for p in PAGES[:5]:
-            h = fetch(root + p)
+        for i, p in enumerate(PAGES[:5]):
+            h = fetch(root + p, browser=(i < 2))      # browser only for home + first contact page
             if not h: continue
             e, pe, so = extract(h, dom); emails |= e; people += pe; socials = {**so, **socials}
             time.sleep(random.uniform(1, 3))
@@ -161,6 +162,7 @@ def main():
             db().table("leads").update(upd).eq("lead_id", lead["lead_id"]).execute()
             done += 1
             time.sleep(random.uniform(3, 8))
+        render.close()
         finish_run(run_id, {"processed": done, "with_email": found_any, "named": found_named, "hunter_used": HUNTER_BUDGET - hunter_left})
         log_event("audit", "info", f"enrich done: {done} processed, {found_any} with email, {found_named} named")
     except Exception as e:

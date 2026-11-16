@@ -26,5 +26,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r workers/requirements.txt
+      - run: pip install -q -r workers/requirements.txt -r workers/requirements-browser.txt
+      - run: python -m playwright install --with-deps chromium
       - run: python -I workers/audit/audit.py "${LIMIT:-40}"
