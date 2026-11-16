@@ -60,6 +60,31 @@ if E("ROUTER_LOG"):
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", handlers=_handlers, force=True)
 log = logging.getLogger("router")
 
+# --- brain log (Supabase brain_events, kind=llm) for the dashboard AI page ----------------------
+EVENTS = []
+def note(level, message, **data):
+    EVENTS.append({"source": "brain", "level": level, "message": message[:500], "data": {"kind": "llm", **data}})
+    if len(EVENTS) > 500: del EVENTS[:100]
+
+async def flush_events(app):
+    url, key = E("SUPABASE_URL"), E("SUPABASE_SERVICE_KEY")
+    if not (url and key): return
+    async with ClientSession() as s:
+        while True:
+            await asyncio.sleep(int(E("ROUTER_FLUSH_SECS", "30")))
+            if not EVENTS: continue
+            batch = EVENTS[:100]
+            try:
+                r = await s.post(url.rstrip("/") + "/rest/v1/brain_events", json=batch, timeout=ClientTimeout(total=20),
+                                 headers={"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json", "Prefer": "return=minimal"})
+                if r.status < 300: del EVENTS[:len(batch)]
+                r.release()
+            except Exception:
+                pass
+
+async def start_flusher(app):
+    app["flusher"] = asyncio.create_task(flush_events(app))
+
 def active_providers(req_chars):
     now = time.time()
     for name in ORDER:
@@ -182,8 +207,11 @@ async def chat(request):
                 try:
                     resp = await try_provider(session, name, p, body, stream)
                 except Exception as e:
-                    errors.append(str(e)[:200]); log.warning("failover: %s", str(e)[:200]); continue
+                    errors.append(str(e)[:200]); log.warning("failover: %s", str(e)[:200])
+                    note("warn", f"{name} failed: {str(e)[:160]}", provider=name, ok=False); continue
                 log.info("served by %s (%s) in %.1fs stream=%s chars=%d", name, p["model"], time.time() - t0, stream, req_chars)
+                note("info", f"served by {name}", provider=name, model=p["model"], ok=True, secs=round(time.time() - t0, 2),
+                     chars=req_chars, stream=stream, attempt=attempt, trimmed=dropped)
                 if not stream:
                     data = await resp.json(content_type=None)
                     ch = (data.get("choices") or [{}])[0]; msg = ch.get("message") or {}
@@ -211,6 +239,7 @@ async def chat(request):
                 return out
     msg = "all providers failed: " + " | ".join(errors[-6:]) if errors else "no provider configured (set GOOGLE_API_KEY etc. in /opt/arvis/.env)"
     log.error(msg)
+    note("error", "all providers failed", ok=False, errors=errors[-4:])
     return web.json_response({"error": {"message": msg, "type": "router_exhausted", "code": 503}}, status=503)
 
 async def models(request):
@@ -222,6 +251,7 @@ async def health(request):
                               "cooldown": {k: int(v - time.time()) for k, v in COOLDOWN.items() if v > time.time()}, "time": dt.datetime.utcnow().isoformat()})
 
 app = web.Application(client_max_size=64 * 1024 * 1024)
+app.on_startup.append(start_flusher)
 app.add_routes([web.post("/v1/chat/completions", chat), web.get("/v1/models", models), web.get("/health", health)])
 
 if __name__ == "__main__":

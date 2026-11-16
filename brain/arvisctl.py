@@ -322,7 +322,21 @@ def main():
     d = sp.add_parser("dispatch"); d.add_argument("worker", choices=["scrape", "audit"]); d.add_argument("--market"); d.add_argument("--city"); d.add_argument("--niche"); d.add_argument("--country"); d.add_argument("--count", type=int); d.add_argument("--limit", type=int)
     d.add_argument("--new-sheet", action="store_true"); d.add_argument("--color"); d.add_argument("--label")
     a = p.parse_args()
-    log_event("brain", "info", "arvisctl %s" % " ".join(sys.argv[1:])[:200], {"cmd": a.cmd})
+    cmdline = " ".join(sys.argv[1:])[:200]; t0 = time.time()
+    try:
+        _run(a)
+    except SystemExit as e:
+        if e.code not in (None, 0):
+            log_event("brain", "warn", f"task failed: arvisctl {cmdline}", {"kind": "task", "cmd": a.cmd, "ok": False, "error": str(e.code)[:300], "secs": round(time.time() - t0, 1)})
+        else:
+            log_event("brain", "info", f"task done: arvisctl {cmdline}", {"kind": "task", "cmd": a.cmd, "ok": True, "secs": round(time.time() - t0, 1)})
+        raise
+    except Exception as e:
+        log_event("brain", "error", f"task crashed: arvisctl {cmdline}", {"kind": "task", "cmd": a.cmd, "ok": False, "error": str(e)[:300], "secs": round(time.time() - t0, 1)})
+        raise
+    log_event("brain", "info", f"task done: arvisctl {cmdline}", {"kind": "task", "cmd": a.cmd, "ok": True, "secs": round(time.time() - t0, 1)})
+
+def _run(a):
     {"stats": cmd_stats, "leads": cmd_leads, "businesses": cmd_leads, "markets": cmd_markets, "add-market": cmd_add_market, "runs": cmd_runs,
      "dispatch": cmd_dispatch, "sheets": cmd_sheets, "sheets-layout": cmd_sheets_layout, "mirror": cmd_mirror, "verify": cmd_verify, "email": cmd_email, "report": cmd_report}[a.cmd](a)
 
