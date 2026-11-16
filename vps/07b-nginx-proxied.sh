@@ -23,9 +23,8 @@ map \$http_upgrade \$arvis_conn_upgrade { default upgrade; '' close; }
 server {
     listen 80;
     listen [::]:80;
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    http2 on;
+    listen 443 ssl http2;        # nginx 1.24 syntax ("http2 on;" needs >= 1.25.1)
+    listen [::]:443 ssl http2;
     server_name arvis.armedias.com;
     ssl_certificate     $LE/fullchain.pem;
     ssl_certificate_key $LE/privkey.pem;
