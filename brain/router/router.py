@@ -38,6 +38,10 @@ PROVIDERS = {
     # free, no card: GitHub Models (fine-grained token with "Models: Read"), Mistral "Experiment" plan
     "github":          {"url": "https://models.github.ai/inference/chat/completions",                       "key": E("GITHUB_MODELS_TOKEN"), "model": E("GITHUB_MODELS_MODEL", "openai/gpt-4.1-mini"), "max_chars": int(E("GITHUB_MAX_CHARS", "28000"))},
     "mistral":         {"url": "https://api.mistral.ai/v1/chat/completions",                                "key": E("MISTRAL_API_KEY"),    "model": E("MISTRAL_MODEL", "mistral-small-latest")},
+    # Modal-hosted DeepSeek (Modal proxy auth: Modal-Key / Modal-Secret headers). Shared endpoints need
+    # billing on the Modal account, so it is NOT in the default order; add "modal" to ROUTER_ORDER to use it.
+    "modal":           {"url": (E("MODAL_BASE_URL") or "").rstrip("/") + "/chat/completions",                "key": E("MODAL_KEY"),          "model": E("MODAL_MODEL", "deepseek-ai/DeepSeek-V4.1-Flash"),
+                        "headers": {"Modal-Key": E("MODAL_KEY") or "", "Modal-Secret": E("MODAL_SECRET") or ""}},
 }
 ORDER = [p.strip() for p in E("ROUTER_ORDER", "gemini-lite,cerebras,mistral,nvidia,github,gemini,groq,openrouter-free").split(",") if p.strip() in PROVIDERS]
 MAX_REQ_CHARS = int(E("ROUTER_MAX_REQ_CHARS", "160000"))   # ≈40k tokens; older turns are trimmed above this
@@ -88,12 +92,14 @@ def parse_retry_after(resp):
 async def try_provider(session, name, p, body, stream):
     payload = dict(body); payload["model"] = p["model"]
     payload.pop("user", None)
-    headers = {"Authorization": f"Bearer {p['key']}", "Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", **(p.get("headers") or {"Authorization": f"Bearer {p['key']}"})}
     if name == "openrouter-free": headers["HTTP-Referer"] = "https://armedias.com"; headers["X-Title"] = "ARVIS"
     resp = await session.post(p["url"], json=payload, headers=headers, timeout=ClientTimeout(total=180, sock_connect=15, sock_read=90))
     if resp.status in RETRY_STATUSES:
         txt = " ".join((await resp.text()).split())[:300]; resp.release()
         if resp.status == 429: COOLDOWN[name] = time.time() + parse_retry_after(resp)
+        if any(w in txt.lower() for w in ("payment method", "spend limit", "billing", "insufficient credit", "quota exceeded for this month")):
+            COOLDOWN[name] = time.time() + 3600   # billing problem: no point retrying soon
         raise RuntimeError(f"{name} HTTP {resp.status}: {txt}")
     if resp.status >= 400:
         txt = " ".join((await resp.text()).split())[:300]; resp.release()
