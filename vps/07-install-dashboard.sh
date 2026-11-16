@@ -11,6 +11,7 @@
 #   - TLS via certbot for arvis.armedias.com only
 #   - Hermes cron "update-dashboard" pulls new builds hourly (no LLM tokens)
 # Before running: Cloudflare DNS for armedias.com → A record `arvis` → this VPS's IP, DNS only (grey).
+# After it finishes: switch that record to Proxied (orange) so the server IP stays hidden.
 # =============================================================================
 set -euo pipefail
 if [[ $EUID -ne 0 ]]; then echo "Run with sudo." >&2; exit 1; fi
@@ -110,9 +111,10 @@ if nginx -t 2>&1 | tail -2; then systemctl reload nginx && echo "== nginx reload
 # 5. TLS for this subdomain only
 command -v certbot >/dev/null || apt-get install -y certbot python3-certbot-nginx >/dev/null
 if [[ "$RESOLVED" == "$IP" ]]; then
-  certbot --nginx -d $DOMAIN --non-interactive --agree-tos --register-unsafely-without-email --redirect | tail -3
+  certbot --nginx -d $DOMAIN --non-interactive --agree-tos --register-unsafely-without-email --no-redirect | tail -3
+  bash /opt/arvis/arvis-repo/vps/07b-nginx-proxied.sh   # proxy-safe config (no origin redirect)
 else
-  echo "== certbot skipped: point DNS first, then run: certbot --nginx -d $DOMAIN --non-interactive --agree-tos --register-unsafely-without-email --redirect"
+  echo "== certbot skipped: point DNS first (grey cloud), then re-run this script"
 fi
 curl -s -o /dev/null -w "== public check: https://$DOMAIN/login HTTP %{http_code}\n" https://$DOMAIN/login || true
 echo "Done. PM2 / armedias.com untouched."

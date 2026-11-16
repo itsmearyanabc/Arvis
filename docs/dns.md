@@ -30,7 +30,7 @@ DNS for armedias.com is at **Cloudflare** (alla/john.ns.cloudflare.com).
 
 | Type | Name | Content | Proxy |
 |---|---|---|---|
-| A | arvis | the VPS public IP (`curl -4 -s ifconfig.me` on the VPS) | **DNS only (grey cloud)** |
+| A | arvis | the VPS public IP (`curl -4 -s ifconfig.me` on the VPS) | grey while `07` runs, then **Proxied (orange)** |
 
 Then run `vps/07-install-dashboard.sh`. The dashboard is built on GitHub Actions (never on the VPS),
 runs as user `arvis` capped at 300 MB inside the ARVIS slice, gets its own Nginx server block and
