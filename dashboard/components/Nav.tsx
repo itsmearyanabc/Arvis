@@ -6,6 +6,9 @@ const ITEMS = [
   { href: "/", label: "Today" },
   { href: "/leads", label: "Leads" },
   { href: "/markets", label: "Markets" },
+  { href: "/email", label: "Email" },
+  { href: "/ai", label: "AI" },
+  { href: "/tasks", label: "Tasks" },
   { href: "/runs", label: "Runs & Logs" },
   { href: "/settings", label: "Settings" },
 ];

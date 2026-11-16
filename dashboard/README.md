@@ -15,13 +15,16 @@ link here.
 | `/` Today | Tiles (leads, with email, named, new 24h, markets scraped/active, runs ok/failed), leads-per-day for 30 days, per-group table, latest worker runs, brain animation |
 | `/leads` | Server-side paginated table (50/page). Filters: group, niche, market, has email, contact quality, status, min ticket score, business-name search. Columns: score, quality, email + source, website, phone, Instagram, status, Google Maps link. Click a row → drawer with the full lead, audits and contacts |
 | `/markets` | All markets with group, status, lead count, last scraped; Pause/Activate toggle; "Add a market" form (country, city, niche from the six groups) → inserts into `markets` with the same `mk_<cc>_<city>_<niche>` id as `seed_markets.py` |
+| `/email` | Sequences from `sequences` in Drafts / Sent / Stopped tabs (drawer shows step bodies), Approve toggle on drafts (`approved_by_aryan`), replies joined by sequence, readiness card with live MX / SPF / DKIM / DMARC lookups via dns.google. No send button: sending happens in Telegram |
+| `/ai` | Model calls from `brain_events` where `data.kind = llm`: per-provider calls (24h / 7d), success rate, failovers, trimmed requests, median latency, live feed |
+| `/tasks` | Every `arvisctl` task the brain ran (`data.kind = task`: ok, secs, error) with ok / failed filter and a live feed; Workers tab lists `worker_runs` |
 | `/runs` | `worker_runs` (last 100: worker, status, input, counts, error, duration) and the live brain log: `brain_events` streamed over Supabase Realtime, filter by source, follow mode |
 | `/settings` | Which env vars and integrations are configured (flags only, never values) |
 | `/login` | Supabase Auth email+password |
 
 Header + Today page: `components/BrainCanvas.tsx`, plain canvas + `requestAnimationFrame`.
 Five hub nodes = sources (brain, scrape, audit, mirror, telegram). Pulse rate scales with
-`brain_events` in the last 10 minutes; a hub glows for 60 s after its source logs; idle state
+`brain_events` in the last 10 minutes, with an extra burst on every live event (bigger for model calls); a hub glows for 60 s after its source logs; idle state
 breathes slowly. No chart or animation libraries.
 
 ## API routes (server-side, service key)

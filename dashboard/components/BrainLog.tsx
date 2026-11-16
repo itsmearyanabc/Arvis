@@ -6,7 +6,7 @@ import { SOURCE_COLORS } from "@/components/BrainCanvas";
 
 const LEVEL: Record<string, string> = { debug: "text-muted", info: "text-text", warn: "text-warn", error: "text-bad" };
 
-export default function BrainLog({ initial, available }: { initial: BrainEvent[]; available: boolean }) {
+export default function BrainLog({ initial, available, kind, height = 460 }: { initial: BrainEvent[]; available: boolean; kind?: string; height?: number }) {
   const [events, setEvents] = useState<BrainEvent[]>(initial);
   const [live, setLive] = useState<"connecting" | "live" | "off">(available ? "connecting" : "off");
   const [filter, setFilter] = useState("");
@@ -22,12 +22,14 @@ export default function BrainLog({ initial, available }: { initial: BrainEvent[]
       if (cancelled) return;
       ch = sb.channel(`brain_log_${Math.random().toString(36).slice(2)}`)
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "brain_events" }, (p) => {
-          setEvents((ev) => [...ev.slice(-999), p.new as BrainEvent]);
+          const e = p.new as BrainEvent;
+          if (kind && String(e.data?.kind ?? "") !== kind) return;
+          setEvents((ev) => [...ev.slice(-999), e]);
         })
         .subscribe((status) => setLive(status === "SUBSCRIBED" ? "live" : status === "CHANNEL_ERROR" || status === "TIMED_OUT" ? "off" : "connecting"));
     });
     return () => { cancelled = true; if (ch) sb.removeChannel(ch); };
-  }, [available]);
+  }, [available, kind]);
 
   useEffect(() => {
     if (follow && box.current) box.current.scrollTop = box.current.scrollHeight;
@@ -46,7 +48,7 @@ export default function BrainLog({ initial, available }: { initial: BrainEvent[]
         <label className="ml-auto inline-flex items-center gap-1 text-muted"><input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} /> follow</label>
         <span className="text-muted">{shown.length} lines</span>
       </div>
-      <div ref={box} className="mono h-[460px] overflow-y-auto border-t border-line bg-bg px-3 py-2 text-[12px] leading-5">
+      <div ref={box} style={{ height }} className="mono overflow-y-auto border-t border-line bg-bg px-3 py-2 text-[12px] leading-5">
         {!shown.length && <div className="text-muted">{available ? "No events yet. The scrape upload step and arvisctl commands write here." : "brain_events table not found."}</div>}
         {shown.map((e) => (
           <div key={e.id} className="flex gap-2 whitespace-pre-wrap break-words">

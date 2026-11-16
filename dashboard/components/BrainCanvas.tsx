@@ -47,10 +47,11 @@ export default function BrainCanvas({ compact = false, idle = false, showLegend 
   const ref = useRef<HTMLCanvasElement>(null);
   const feed = useRef<FeedState>({ recent10m: 0, lastBySource: {}, available: false });
   const [badge, setBadge] = useState<FeedState | null>(null);
+  const burst = useRef(0); // extra pulses queued by live events (model calls burst harder)
 
   useEffect(() => {
     if (idle) return;
-    return subscribeBrainFeed((s) => { feed.current = s; setBadge(s); });
+    return subscribeBrainFeed((s) => { feed.current = s; setBadge(s); }, (e) => { burst.current += e.data?.kind === "llm" ? 6 : 2; });
   }, [idle]);
 
   useEffect(() => {
@@ -93,6 +94,7 @@ export default function BrainCanvas({ compact = false, idle = false, showLegend 
       const rate = 0.4 + 0.6 * breath + activity * 8;
       spawnAcc += rate * dt;
       while (spawnAcc > 1) { spawnAcc -= 1; spawn(); }
+      if (burst.current > 0 && Math.random() < 0.5) { burst.current -= 1; spawn(SOURCE_COLORS.brain, 0); }
 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
