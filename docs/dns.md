@@ -25,12 +25,16 @@ Security → **App passwords** → create one named "ARVIS" (SMTP/IMAP use this,
 password). Warm-up: from day 1 send 5–10 real, human emails a day from connect@ to people
 who will reply, for 2–3 weeks, before any cold email.
 
-## 2. Dashboard: arvis.armedias.tech (Vercel)
-| Type | Host | Value |
-|---|---|---|
-| CNAME | arvis | `cname.vercel-dns.com` |
+## 2. Dashboard: arvis.armedias.com (Vercel) — decided 2026-11-16
+DNS for armedias.com is at **Cloudflare** (alla/john.ns.cloudflare.com), not Hostinger.
 
-Vercel → project → Settings → Domains → add `arvis.armedias.tech`.
+| Type | Name | Target | Proxy |
+|---|---|---|---|
+| CNAME | arvis | `cname.vercel-dns.com` | **DNS only (grey cloud)** |
+
+Vercel → project → Settings → Domains → add `arvis.armedias.com`. The panel is hosted on Vercel,
+so it adds zero load to the armedias.com server, and every page is `noindex`, so search engines
+never list it and armedias.com SEO is untouched.
 
 ## 3. Booking: book.armedias.tech (Cal.com hosted)
 | Type | Host | Value |
@@ -50,6 +54,6 @@ dig +short TXT mail.armedias.tech
 dig +short MX mail.armedias.tech
 dig +short TXT zmail._domainkey.mail.armedias.tech
 dig +short TXT _dmarc.mail.armedias.tech
-dig +short CNAME arvis.armedias.tech
+dig +short CNAME arvis.armedias.com
 ```
 Paste the outputs to Claude.

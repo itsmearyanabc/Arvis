@@ -35,7 +35,7 @@ LLM loop, Telegram gateway, cron, skills. Everything ARVIS knows how to do lives
    write results → Supabase          ▲
                                      │ reads (anon key + Aryan login)
  Vercel (free)                       │
-   dashboard  arvis.armedias.tech ───┘   lead table, approvals, funnel, templates
+   dashboard  arvis.armedias.com ───┘   lead table, approvals, funnel, templates
    API routes: /unsubscribe, /webhooks/calcom
    armedias.com/admin gets only a LINK here (no change to that codebase)
 
@@ -120,6 +120,6 @@ docs/instagram-and-linkedin.md  why no IG/LinkedIn automation, what we do instea
 | 4 | `draft-email` with approval gate on Telegram | approved drafts in Supabase |
 | 5 | Warm-up done → `send-sequence` live, 50/day cap, follow-ups, unsubscribe endpoint | first replies reported |
 | 6 | `inbox-triage`, `booking-brief` | booked meeting with brief |
-| 7 | Vercel dashboard at arvis.armedias.tech, link from armedias.com/admin | dashboard screenshot |
+| 7 | Vercel dashboard at arvis.armedias.com, link from armedias.com/admin | dashboard screenshot |
 
 Each phase starts only after the previous one is confirmed by pasted output or screenshot.

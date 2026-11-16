@@ -1,4 +1,4 @@
-# ARVIS dashboard — Next.js 15 on Vercel, arvis.armedias.tech
+# ARVIS dashboard — Next.js 15 on Vercel, arvis.armedias.com
 
 The operating panel: see everything ARVIS has in Supabase, with a live "brain log" and a
 neural-network header that reacts to activity. Single user (Aryan), Supabase Auth
@@ -63,14 +63,14 @@ it prompts for the password.)
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY` = `SUPABASE_ANON_KEY` (publishable key)
    - `SUPABASE_SERVICE_KEY` = `SUPABASE_SERVICE_KEY` (secret key, server only)
    - `UNSUBSCRIBE_SECRET` = `openssl rand -hex 24`
-   - `NEXT_PUBLIC_SITE_URL` = `https://arvis.armedias.tech`
+   - `NEXT_PUBLIC_SITE_URL` = `https://arvis.armedias.com`
    - optional later: `CALCOM_WEBHOOK_SECRET`
 4. Deploy. First deploy gives `<project>.vercel.app`; log in there to check.
-5. **Domain**: Project → Settings → Domains → add `arvis.armedias.tech`. At Hostinger (DNS for
+5. **Domain**: Project → Settings → Domains → add `arvis.armedias.com`. At Hostinger (DNS for
    armedias.tech) add `CNAME  arvis  →  cname.vercel-dns.com` (TTL 3600). Vercel issues the
    certificate once DNS resolves (minutes to an hour).
-6. Supabase → Authentication → URL Configuration → Site URL `https://arvis.armedias.tech`.
-7. armedias.com/admin: one link `<a href="https://arvis.armedias.tech">ARVIS</a>`, nothing else.
+6. Supabase → Authentication → URL Configuration → Site URL `https://arvis.armedias.com`.
+7. armedias.com/admin: one link `<a href="https://arvis.armedias.com">ARVIS</a>`, nothing else.
 
 Every push to `main` that touches `dashboard/` redeploys automatically. Vercel's free tier is
 enough: the app is server-rendered on demand with no cron and no outbound calls.
