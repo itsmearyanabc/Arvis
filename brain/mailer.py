@@ -26,6 +26,8 @@ def deliverability_check(domain):
     if not mx: problems.append(f"no MX records on {domain} (replies would bounce)")
     if not spf: problems.append(f"no SPF record on {domain} (mail goes to spam)")
     if not dmarc: problems.append(f"no DMARC record on _dmarc.{domain}")
+    dkim = dns(_env("DKIM_SELECTOR", "zmail") + "._domainkey." + domain, "TXT")
+    if not any("p=" in t for t in dkim): problems.append(f"no DKIM key at {_env('DKIM_SELECTOR', 'zmail')}._domainkey.{domain}")
     return problems
 
 def footer():
