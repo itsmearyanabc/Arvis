@@ -25,16 +25,16 @@ Security → **App passwords** → create one named "ARVIS" (SMTP/IMAP use this,
 password). Warm-up: from day 1 send 5–10 real, human emails a day from connect@ to people
 who will reply, for 2–3 weeks, before any cold email.
 
-## 2. Dashboard: arvis.armedias.com (Vercel) — decided 2026-11-16
-DNS for armedias.com is at **Cloudflare** (alla/john.ns.cloudflare.com), not Hostinger.
+## 2. Dashboard: arvis.armedias.com, hosted on the ARVIS VPS — decided 2026-11-17
+DNS for armedias.com is at **Cloudflare** (alla/john.ns.cloudflare.com).
 
-| Type | Name | Target | Proxy |
+| Type | Name | Content | Proxy |
 |---|---|---|---|
-| CNAME | arvis | `cname.vercel-dns.com` | **DNS only (grey cloud)** |
+| A | arvis | the VPS public IP (`curl -4 -s ifconfig.me` on the VPS) | **DNS only (grey cloud)** |
 
-Vercel → project → Settings → Domains → add `arvis.armedias.com`. The panel is hosted on Vercel,
-so it adds zero load to the armedias.com server, and every page is `noindex`, so search engines
-never list it and armedias.com SEO is untouched.
+Then run `vps/07-install-dashboard.sh`. The dashboard is built on GitHub Actions (never on the VPS),
+runs as user `arvis` capped at 300 MB inside the ARVIS slice, gets its own Nginx server block and
+its own certificate, and every page is `noindex`. armedias.com's block, PM2 and SEO are untouched.
 
 ## 3. Booking: book.armedias.tech (Cal.com hosted)
 | Type | Host | Value |

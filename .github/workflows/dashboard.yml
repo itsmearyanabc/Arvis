@@ -1,0 +1,49 @@
+# Builds the dashboard on GitHub's runners (never on the VPS: a Next build needs ~1.5 GB RAM and a
+# full CPU, which would slow armedias.com) and publishes a ready-to-run tarball as the release asset
+# "dashboard-latest/dashboard.tar.gz". The VPS only downloads and runs it (vps/07-install-dashboard.sh).
+name: dashboard
+on:
+  push:
+    branches: [main]
+    paths: ["dashboard/**", ".github/workflows/dashboard.yml"]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: dashboard
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: dashboard
+    env:
+      # public by design (shipped to the browser); data is gated by RLS owner-only policies
+      NEXT_PUBLIC_SUPABASE_URL: https://bjfjsixhfzvceszradjx.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: sb_publishable_CjmklMShEJDGd31S1YQCYw_vlc4r-LT
+      NEXT_PUBLIC_SITE_URL: https://arvis.armedias.com
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - run: npm ci
+      - run: npx next build
+      - name: Package standalone server
+        run: |
+          cp -r .next/static .next/standalone/.next/
+          [ -d public ] && cp -r public .next/standalone/ || true
+          echo "${GITHUB_SHA}" > .next/standalone/VERSION
+          tar -czf dashboard.tar.gz -C .next/standalone .
+          ls -lh dashboard.tar.gz
+      - name: Publish release asset dashboard-latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view dashboard-latest >/dev/null 2>&1 || gh release create dashboard-latest --title "Dashboard build" --notes "Built by .github/workflows/dashboard.yml" --latest=false
+          gh release upload dashboard-latest dashboard.tar.gz --clobber
