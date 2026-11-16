@@ -85,12 +85,61 @@ def trim_history(body):
     note = {"role": "system", "content": f"[{dropped} earlier messages trimmed to fit the model's limits]"}
     return {**body, "messages": system + [note] + tail}, dropped
 
+# --- Gemini thought signatures -----------------------------------------------------------------
+# Gemini 3 returns extra_content.google.thought_signature on every tool call and rejects the next
+# request (HTTP 400 "Function call is missing a thought_signature") if it is not sent back. Hermes
+# does not keep that field, so the router remembers signatures by tool_call id and re-attaches
+# them; unknown ids get Google's documented placeholder that skips validation.
+SIG_CACHE = {}            # tool_call_id -> signature
+SIG_DUMMY = "skip_thought_signature_validator"
+
+def remember_signatures(message):
+    for tc in (message or {}).get("tool_calls") or []:
+        sig = (((tc.get("extra_content") or {}).get("google") or {}).get("thought_signature"))
+        if tc.get("id") and sig:
+            SIG_CACHE[tc["id"]] = sig
+    if len(SIG_CACHE) > 5000:
+        for k in list(SIG_CACHE)[:1000]: SIG_CACHE.pop(k, None)
+
+def prepare_messages(body, provider):
+    """Gemini: make sure every assistant tool call carries a signature. Others: strip extra_content."""
+    out = []
+    for m in body.get("messages") or []:
+        if m.get("role") == "assistant" and m.get("tool_calls"):
+            m = dict(m); tcs = []
+            for tc in m["tool_calls"]:
+                tc = dict(tc)
+                if provider.startswith("gemini"):
+                    sig = (((tc.get("extra_content") or {}).get("google") or {}).get("thought_signature")) \
+                          or SIG_CACHE.get(tc.get("id")) or SIG_DUMMY
+                    tc["extra_content"] = {"google": {"thought_signature": sig}}
+                else:
+                    tc.pop("extra_content", None)
+                tcs.append(tc)
+            m["tool_calls"] = tcs
+        elif not provider.startswith("gemini") and "extra_content" in m:
+            m = {k: v for k, v in m.items() if k != "extra_content"}
+        out.append(m)
+    return {**body, "messages": out}
+
+def scan_stream_chunk(buf):
+    """Pull thought signatures out of streamed SSE lines (tool_call deltas)."""
+    for line in buf.split(b"\n"):
+        line = line.strip()
+        if not line.startswith(b"data:") or line.endswith(b"[DONE]"): continue
+        try:
+            d = json.loads(line[5:])
+        except Exception:
+            continue
+        for ch in d.get("choices") or []:
+            remember_signatures(ch.get("delta") or {})
+
 def parse_retry_after(resp):
     try: return max(5, min(300, int(float(resp.headers.get("Retry-After", "60")))))
     except Exception: return 60
 
 async def try_provider(session, name, p, body, stream):
-    payload = dict(body); payload["model"] = p["model"]
+    payload = prepare_messages(body, name); payload["model"] = p["model"]
     payload.pop("user", None)
     headers = {"Content-Type": "application/json", **(p.get("headers") or {"Authorization": f"Bearer {p['key']}"})}
     if name == "openrouter-free": headers["HTTP-Referer"] = "https://armedias.com"; headers["X-Title"] = "ARVIS"
@@ -133,15 +182,25 @@ async def chat(request):
                     ch = (data.get("choices") or [{}])[0]; msg = ch.get("message") or {}
                     if not data.get("choices") or (not (msg.get("content") or "").strip() and not msg.get("tool_calls")):
                         errors.append(f"{name}: empty answer"); log.warning("failover: %s returned an empty answer", name); continue
+                    remember_signatures(msg)
                     data["model"] = f"arvis-router/{name}"
                     return web.json_response(data)
                 out = web.StreamResponse(status=200, headers={"Content-Type": "text/event-stream", "Cache-Control": "no-cache", "X-Arvis-Provider": name})
                 await out.prepare(request)
+                tail = b""
                 try:
                     async for chunk in resp.content.iter_any():
+                        buf = tail + chunk
+                        cut = buf.rfind(b"\n")
+                        if cut >= 0:
+                            scan_stream_chunk(buf[:cut]); tail = buf[cut + 1:]
+                        else:
+                            tail = buf
                         await out.write(chunk)
-                finally:
+                    if tail: scan_stream_chunk(tail)
                     await out.write_eof()
+                except (ConnectionResetError, Exception) as e:   # client went away mid-stream
+                    log.info("stream from %s ended early: %s", name, str(e)[:120])
                 return out
     msg = "all providers failed: " + " | ".join(errors[-6:]) if errors else "no provider configured (set GOOGLE_API_KEY etc. in /opt/arvis/.env)"
     log.error(msg)
