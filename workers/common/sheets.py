@@ -193,5 +193,30 @@ def list_tabs():
         out.append({"tab": ws.title, "rows": rows, "url": f"https://docs.google.com/spreadsheets/d/{sid}/edit#gid={ws.id}"})
     return {"spreadsheet": sh.title, "url": f"https://docs.google.com/spreadsheets/d/{sid}", "tabs": out}
 
+def _diagnose(e):
+    """Explain a Sheets failure without printing secrets."""
+    sid = os.environ.get("GOOGLE_SHEET_ID") or ""
+    raw = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON") or ""
+    who = "?"
+    try:
+        info = json.loads(raw) if raw.strip().startswith("{") else json.load(open(raw))
+        who = info.get("client_email", "?")
+    except Exception:
+        who = "unreadable GOOGLE_SERVICE_ACCOUNT_JSON"
+    hint = ("GOOGLE_SHEET_ID looks like a placeholder, not a real id (real ids are ~44 characters)" if len(sid) < 30
+            else f"the sheet is not shared with {who}, or GOOGLE_SHEET_ID points at another spreadsheet")
+    return f"Sheet mirror skipped: {type(e).__name__}. Service account: {who}. GOOGLE_SHEET_ID length: {len(sid)}. Likely cause: {hint}."
+
 if __name__ == "__main__":
-    mirror_leads(sys.argv[1] if len(sys.argv) > 1 else None)
+    # The mirror is a convenience copy; Supabase is the system of record. A Sheets problem must never
+    # mark the nightly scrape as failed, so it ends as a GitHub warning + a brain-log entry instead.
+    try:
+        mirror_leads(sys.argv[1] if len(sys.argv) > 1 else None)
+    except Exception as e:
+        msg = _diagnose(e)
+        print(f"::warning title=Google Sheet mirror::{msg}")
+        try:
+            from common.events import log_event
+            log_event("mirror", "warn", msg)
+        except Exception:
+            pass
