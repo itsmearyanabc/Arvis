@@ -1,6 +1,6 @@
 # ARVIS — system design v2 (2026-11-19)
 
-Status: **proposal, waiting for Aryan's approval.** Nothing in "Target design" is built yet.
+Status: **approved 2026-11-19.** Phase A (guard) and B (AI layer) built and tested locally; rollout via `vps/10-update-ai-and-guard.sh`. C–E pending.
 
 ## 1. What ARVIS is for
 
@@ -127,8 +127,8 @@ Both website changes are made in the website's own session; ARVIS never edits ar
 
 | Phase | Build | Acceptance test |
 |---|---|---|
-| A | website guard + VPS update | guard log shows readings; armedias.com response unchanged |
-| B | AI lanes, budgets, new providers, tool trim | 30 Telegram messages in 10 min with 0 failures; AI page shows spread |
+| A | website guard + VPS update | guard log shows readings; armedias.com response unchanged — **built; 8/8 simulated scenarios pass** |
+| B | AI lanes, budgets, new providers, tool trim | 30 Telegram messages in 10 min with 0 failures; AI page shows spread — **built; local: cold start 39 s→14 s, 20/20 burst, 2 lanes, hedging; tool list logged for the trim** |
 | C | business profile + service matcher + market realignment | every business shows best service + angle |
 | D | inbound from armedias.com | test enquiry → Telegram alert + brief within 60 s |
 | E | email (after Zoho + warm-up) | mail-tester ≥ 9/10, first approved send |
