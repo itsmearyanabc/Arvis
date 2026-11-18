@@ -13,8 +13,16 @@ LEAD_COLS = ["lead_id", "business_name", "niche", "city", "country", "phone", "w
              "email_source", "source", "maps_url", "top_issue", "status", "instagram_url",
              "linkedin_url", "scraped_at"]
 
+import re as _re
+
+def _sheet_id(v):
+    """Accept the bare id or the whole Google Sheets URL (people paste the URL)."""
+    v = (v or "").strip()
+    m = _re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]{20,})", v)
+    return m.group(1) if m else (v or None)
+
 def _client():
-    raw = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON"); sid = os.environ.get("GOOGLE_SHEET_ID")
+    raw = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON"); sid = _sheet_id(os.environ.get("GOOGLE_SHEET_ID"))
     if not raw:
         root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         candidates = [os.environ.get("ARVIS_ENV"), "/opt/arvis/.env", os.path.join(root, ".env")]
@@ -25,7 +33,7 @@ def _client():
                     if line and not line.startswith("#") and "=" in line:
                         k, v = line.split("=", 1); os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
                 break
-        raw = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON"); sid = os.environ.get("GOOGLE_SHEET_ID")
+        raw = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON"); sid = _sheet_id(os.environ.get("GOOGLE_SHEET_ID"))
     if not raw:
         return None, None
     import gspread
@@ -195,7 +203,7 @@ def list_tabs():
 
 def _diagnose(e):
     """Explain a Sheets failure without printing secrets."""
-    sid = os.environ.get("GOOGLE_SHEET_ID") or ""
+    sid = _sheet_id(os.environ.get("GOOGLE_SHEET_ID")) or ""
     raw = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON") or ""
     who = "?"
     try:
