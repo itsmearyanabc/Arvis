@@ -42,7 +42,10 @@ def sent_today(db):
 def draft(db, to, subject, body, name=None):
     to = to.strip().lower()
     if not re.match(r"^[^@\s]+@[^@\s]+\.[a-z]{2,}$", to): raise SystemExit(f"not an email address: {to}")
-    row = {"contact_email": to, "step1_subject": subject.strip(), "step1_body": body.strip(), "status": "draft",
+    subject = " ".join((subject or "").split())[:150]            # headers must be one line
+    body = (body or "").replace("\\n", "\n").strip()               # literal \n typed in chat -> line break
+    if not subject or not body: raise SystemExit("subject and body must not be empty")
+    row = {"contact_email": to, "step1_subject": subject, "step1_body": body, "status": "draft",
            "approved_by_aryan": False, "edit_note": f"one-off from Telegram{(' to ' + name) if name else ''}"}
     rec = db().table("sequences").insert(row).execute().data[0]
     return rec["sequence_id"], render(subject, body)
@@ -66,6 +69,9 @@ def send(db, seq_id):
         raise SystemExit(f"{to} has unsubscribed; not sending")
     cap = int(_env("DAILY_SEND_CAP", "50"))
     if sent_today(db) >= cap: raise SystemExit(f"daily cap {cap} reached; try tomorrow")
+    # claim the draft first so a retry after a failure can never send it twice
+    claimed = db().table("sequences").update({"status": "approved"}).eq("sequence_id", seq_id).eq("status", "draft").execute().data
+    if not claimed: raise SystemExit(f"draft {seq_id} was already claimed by another send")
     msg = EmailMessage()
     msg["From"] = formataddr((_env("MAILBOX_1_FROM_NAME", "AR Medias"), user))
     msg["To"] = to; msg["Subject"] = rec["step1_subject"]
@@ -73,8 +79,12 @@ def send(db, seq_id):
     msg["List-Unsubscribe"] = f"<mailto:{user}?subject=unsubscribe>"
     msg.set_content(rec["step1_body"] + footer())
     host = _env("ZOHO_SMTP_HOST", "smtp.zoho.in"); port = int(_env("ZOHO_SMTP_PORT", "465"))
-    with smtplib.SMTP_SSL(host, port, context=ssl.create_default_context(), timeout=30) as s:
-        s.login(user, pw); s.send_message(msg)
+    try:
+        with smtplib.SMTP_SSL(host, port, context=ssl.create_default_context(), timeout=30) as s:
+            s.login(user, pw); s.send_message(msg)
+    except Exception as e:
+        db().table("sequences").update({"status": "draft"}).eq("sequence_id", seq_id).execute()   # nothing went out
+        raise SystemExit(f"send failed, draft kept: {type(e).__name__}: {str(e)[:200]}")
     now = dt.datetime.now(dt.timezone.utc).isoformat()
     db().table("sequences").update({"status": "step1_sent", "approved_by_aryan": True, "approved_at": now,
                                     "step1_sent_at": now, "message_id": mid, "mailbox": user}).eq("sequence_id", seq_id).execute()

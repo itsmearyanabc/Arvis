@@ -209,17 +209,25 @@ async def chat(request):
                 except Exception as e:
                     errors.append(str(e)[:200]); log.warning("failover: %s", str(e)[:200])
                     note("warn", f"{name} failed: {str(e)[:160]}", provider=name, ok=False); continue
-                log.info("served by %s (%s) in %.1fs stream=%s chars=%d", name, p["model"], time.time() - t0, stream, req_chars)
-                note("info", f"served by {name}", provider=name, model=p["model"], ok=True, secs=round(time.time() - t0, 2),
-                     chars=req_chars, stream=stream, attempt=attempt, trimmed=dropped)
+                def served():
+                    log.info("served by %s (%s) in %.1fs stream=%s chars=%d", name, p["model"], time.time() - t0, stream, req_chars)
+                    note("info", f"served by {name}", provider=name, model=p["model"], ok=True, secs=round(time.time() - t0, 2),
+                         chars=req_chars, stream=stream, attempt=attempt, trimmed=dropped)
                 if not stream:
-                    data = await resp.json(content_type=None)
-                    ch = (data.get("choices") or [{}])[0]; msg = ch.get("message") or {}
+                    try:
+                        data = await resp.json(content_type=None)
+                    except Exception as e:
+                        errors.append(f"{name}: unreadable answer"); log.warning("failover: %s returned non-JSON: %s", name, str(e)[:120])
+                        note("warn", f"{name} failed: unreadable answer", provider=name, ok=False); continue
+                    ch = ((data or {}).get("choices") or [{}])[0]; msg = ch.get("message") or {}
                     if not data.get("choices") or (not (msg.get("content") or "").strip() and not msg.get("tool_calls")):
-                        errors.append(f"{name}: empty answer"); log.warning("failover: %s returned an empty answer", name); continue
+                        errors.append(f"{name}: empty answer"); log.warning("failover: %s returned an empty answer", name)
+                        note("warn", f"{name} failed: empty answer", provider=name, ok=False); continue
+                    served()
                     remember_signatures(msg)
                     data["model"] = f"arvis-router/{name}"
                     return web.json_response(data)
+                served()
                 out = web.StreamResponse(status=200, headers={"Content-Type": "text/event-stream", "Cache-Control": "no-cache", "X-Arvis-Provider": name})
                 await out.prepare(request)
                 tail = b""

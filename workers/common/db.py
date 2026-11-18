@@ -11,6 +11,18 @@ def db():
         _client = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
     return _client
 
+def fetch_all(query, page: int = 1000) -> list:
+    """Run a PostgREST select and return ALL rows. Supabase caps every response at 1000 rows,
+    so a plain .execute() silently truncates big tables. `query` is an unexecuted select builder
+    (filters/order applied); it is re-used with .range() per page."""
+    out, start = [], 0
+    while True:
+        rows = query.range(start, start + page - 1).execute().data or []
+        out.extend(rows)
+        if len(rows) < page:
+            return out
+        start += page
+
 def start_run(worker: str, inp: Optional[dict] = None) -> str:
     row = db().table("worker_runs").insert({"worker": worker, "input": inp or {}}).execute().data[0]
     return row["run_id"]

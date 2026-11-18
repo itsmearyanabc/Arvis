@@ -9,7 +9,7 @@ GROUPS = {
     },
     "Legal & Finance": {
         "law firm": ["law firm", "lawyer", "solicitor"],
-        "accounting firm": ["accounting firm", "chartered accountant", "tax advisor"],
+        "accounting firm": ["accounting firm", "accountant", "chartered accountant", "tax advisor", "bookkeeper", "cpa"],
     },
     "Property": {
         "real estate": ["real estate agency", "realtor", "estate agent"],
@@ -51,6 +51,12 @@ def normalize_niche(n: str) -> str:
         if cands & pool: return niche
     for niche in SYNONYMS:            # substring match: "dental" -> dentist, "interior designers" -> interior design
         if niche in n or n in niche: return niche
+    stem = lambda w: w[:6]           # word-stem match: "accountants" ~ "accountant", "lawyers" ~ "lawyer"
+    words = {stem(w) for w in n.replace("-", " ").split() if len(w) > 3}
+    for niche, syns in SYNONYMS.items():
+        for syn in [niche] + syns:
+            if words and words <= {stem(w) for w in syn.split() if len(w) > 3} | {stem(w) for w in niche.split() if len(w) > 3}:
+                return niche
     return n
 
 def group_of(niche: str) -> str:

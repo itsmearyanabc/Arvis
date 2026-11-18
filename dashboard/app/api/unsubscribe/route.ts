@@ -13,12 +13,22 @@ const page = (title: string, body: string, status = 200) =>
     { status, headers: { "content-type": "text/html; charset=utf-8" } },
   );
 
+const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+
 /**
- * GET /api/unsubscribe?token=<sequence_id>.<hmac>
- * Verifies the token, records the contact's email (and domain) in `unsubscribes`,
- * stops the sequence and marks the lead unsubscribed. Idempotent.
+ * GET  /api/unsubscribe?token=<sequence_id>.<hmac>  -> confirmation page with one button (no change yet:
+ *      corporate mail scanners open every link, so a GET must never unsubscribe anyone).
+ * POST /api/unsubscribe?token=...                   -> records the unsubscribe (button or RFC 8058 one-click
+ *      "List-Unsubscribe=One-Click" from Gmail/Outlook). Idempotent.
  */
 export async function GET(request: NextRequest) {
+  const token = request.nextUrl.searchParams.get("token") ?? "";
+  if (!verifyUnsubscribeToken(token)) return page("Link not valid", "This unsubscribe link is missing or has expired. Reply to the email instead and we will remove you by hand.", 400);
+  return page("Unsubscribe?", `Click below and you will not receive any further email from AR Medias.</p>
+<form method="post" action="/api/unsubscribe?token=${encodeURIComponent(token)}"><button style="margin-top:12px;padding:10px 18px;border-radius:8px;border:0;background:#5eead4;color:#07090f;font-weight:600;cursor:pointer">Unsubscribe me</button></form><p>`);
+}
+
+export async function POST(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("token") ?? "";
   const sequenceId = verifyUnsubscribeToken(token);
   if (!sequenceId) return page("Link not valid", "This unsubscribe link is missing or has expired. Reply to the email instead and we will remove you by hand.", 400);
@@ -27,10 +37,10 @@ export async function GET(request: NextRequest) {
   const { data: seq } = await db.from("sequences").select("sequence_id,lead_id,contact_email,status").eq("sequence_id", sequenceId).maybeSingle();
   if (!seq) return page("Already removed", "No active email sequence matches this link. You will not hear from us again.");
 
-  const email = seq.contact_email.toLowerCase();
+  const email = String(seq.contact_email).toLowerCase();
   const domain = email.split("@")[1] ?? null;
   await db.from("unsubscribes").upsert({ email, domain, reason: "request" }, { onConflict: "email", ignoreDuplicates: true });
   await db.from("sequences").update({ status: "stopped_unsub" }).eq("sequence_id", sequenceId);
   if (seq.lead_id) await db.from("leads").update({ status: "unsubscribed", updated_at: new Date().toISOString() }).eq("lead_id", seq.lead_id);
-  return page("You are unsubscribed", `${email} will not receive any further email from us.`);
+  return page("You are unsubscribed", `${esc(email)} will not receive any further email from us.`);
 }

@@ -5,7 +5,7 @@ Silently skips when either is missing."""
 import os, sys, json
 from typing import Optional
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from common.db import db
+from common.db import db, fetch_all
 from common.niches import group_of
 
 LEAD_COLS = ["lead_id", "business_name", "niche", "city", "country", "phone", "website", "rating",
@@ -43,7 +43,10 @@ def _client():
             "https://www.googleapis.com/auth/drive",
         ],
     )
-    gc = gspread.authorize(creds)
+    try:   # retries 429/5xx with exponential backoff instead of crashing the nightly mirror
+        gc = gspread.authorize(creds, http_client=gspread.BackOffHTTPClient)
+    except Exception:
+        gc = gspread.authorize(creds)
     if not sid:
         try:
             for f in gc.list_spreadsheet_files():
@@ -75,9 +78,9 @@ def _hex_to_rgb(h):
 def _market_sheet_map():
     """market_id -> (sheet_id or None, colour or None, task_label)."""
     try:
-        ms = db().table("markets").select("market_id,sheet_id,sheet_color,task_label").execute().data
+        ms = fetch_all(db().table("markets").select("market_id,sheet_id,sheet_color,task_label").order("market_id"))
     except Exception:  # migration 003 not applied yet
-        ms = db().table("markets").select("market_id").execute().data
+        ms = fetch_all(db().table("markets").select("market_id").order("market_id"))
     return {m["market_id"]: (m.get("sheet_id"), m.get("sheet_color"), m.get("task_label")) for m in ms}
 
 def create_sheet(title: str, share_with: Optional[str] = None) -> str:
@@ -139,14 +142,24 @@ def mirror_leads(since_iso: Optional[str] = None) -> int:
         sid_, _, _label = mmap.get(r.get("market_id")) or (None, None, None)
         sid = sid_ or default_sid
         buckets.setdefault((sid, tab_for(r, mmap, lay)), []).append(r)
-    total, books = 0, {}
+    total, books, tabs, have = 0, {}, {}, {}
+    for sid in {k[0] for k in buckets}:
+        sh = books[sid] = gc.open_by_key(sid)
+        tabs[sid] = {ws.title: ws for ws in sh.worksheets()}                       # 1 call
+        titles = list(tabs[sid])
+        if titles:                                                                 # 1 call for ALL tabs
+            ranges = sh.values_batch_get([f"'{t}'!A:A" for t in titles]).get("valueRanges", [])
+            for t, vr in zip(titles, ranges):
+                have[(sid, t)] = [row[0] for row in vr.get("values", []) if row]
     for (sid, group), leads in buckets.items():
-        sh = books.setdefault(sid, gc.open_by_key(sid))
-        ws = _tab(sh, group)
-        have = set(ws.col_values(1)[1:])
-        new = [r for r in leads if r["lead_id"] not in have]
-        if not new: continue
-        start = len(ws.col_values(1)) + 1
+        sh = books[sid]
+        col = have.get((sid, group), [])
+        known = set(col[1:])
+        new = [r for r in leads if r["lead_id"] not in known]
+        if not new: continue                                                       # untouched tab: 0 calls
+        ws = tabs[sid].get(group) or _tab(sh, group)
+        if not col: col = [LEAD_COLS[0]]                                           # _tab wrote the header
+        start = len(col) + 1
         rows = [[("" if r.get(c) is None else r.get(c)) for c in LEAD_COLS] for r in new]
         for i in range(0, len(rows), 500):
             ws.append_rows(rows[i:i+500], value_input_option="RAW")

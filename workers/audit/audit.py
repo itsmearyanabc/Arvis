@@ -78,23 +78,25 @@ def bump(lead, a):
 def main():
     limit = int(sys.argv[1]) if len(sys.argv) > 1 else 40
     run_id = start_run("audit", {"limit": limit})
-    leads = db().table("leads").select("*").eq("status", "new").neq("website", None).order("ticket_score", desc=True).limit(limit).execute().data
-    done = 0
+    leads = db().table("leads").select("*").eq("status", "new").not_.is_("website", "null").order("ticket_score", desc=True).limit(limit).execute().data
+    done, failed = 0, []
     try:
         for lead in leads:
-            a = audit(lead)
-            try: db().table("audits").insert(a).execute()
-            except Exception as e:   # migration 004 not applied yet
-                if "rendered_with_browser" not in str(e): raise
-                a.pop("rendered_with_browser", None); db().table("audits").insert(a).execute()
-            db().table("leads").update({"status": "audited", "ticket_score": bump(lead, a), "top_issue": a.get("top_issue"),
-                                        "audit_summary": a.get("audit_summary"), "updated_at": now_iso()}).eq("lead_id", lead["lead_id"]).execute()
-            done += 1
+            try:                                   # one odd site must never stop the whole run
+                a = audit(lead)
+                try: db().table("audits").insert(a).execute()
+                except Exception as e:   # migration 004 not applied yet
+                    if "rendered_with_browser" not in str(e): raise
+                    a.pop("rendered_with_browser", None); db().table("audits").insert(a).execute()
+                db().table("leads").update({"status": "audited", "ticket_score": bump(lead, a), "top_issue": a.get("top_issue"),
+                                            "audit_summary": a.get("audit_summary"), "updated_at": now_iso()}).eq("lead_id", lead["lead_id"]).execute()
+                done += 1
+            except Exception as e:
+                failed.append(f"{lead['lead_id']}: {str(e)[:120]}"); print("audit skipped", lead["lead_id"], e)
             time.sleep(random.uniform(5, 20))
+    finally:
         render.close()
-        finish_run(run_id, {"audited": done})
-    except Exception as e:
-        finish_run(run_id, {"audited": done}, error=str(e)); raise
+    finish_run(run_id, {"audited": done, "failed": len(failed)}, error=("; ".join(failed[:5]) if failed and not done else None))
     # leads with no website at all: mark audited with no_site so enrich can still run
     nosite = db().table("leads").select("lead_id").eq("status", "new").is_("website", None).limit(limit).execute().data
     for l in nosite:

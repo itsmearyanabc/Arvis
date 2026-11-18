@@ -1,6 +1,7 @@
 "use server";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { safeNext } from "@/lib/safeNext";
 
 export async function login(_prev: { error?: string } | undefined, formData: FormData) {
   const email = String(formData.get("email") || "").trim();
@@ -9,5 +10,5 @@ export async function login(_prev: { error?: string } | undefined, formData: For
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) return { error: error.message };
-  redirect(next.startsWith("/") ? next : "/");
+  redirect(safeNext(next));
 }

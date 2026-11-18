@@ -14,13 +14,13 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(request: NextRequest) {
   const raw = await request.text();
+  // Fail closed: this route writes with the secret key, so it must never accept unsigned requests.
   const secret = process.env.CALCOM_WEBHOOK_SECRET;
-  if (secret) {
-    const sig = request.headers.get("x-cal-signature-256") ?? "";
-    const expect = createHmac("sha256", secret).update(raw).digest("hex");
-    if (sig.length !== expect.length || !timingSafeEqual(Buffer.from(sig), Buffer.from(expect)))
-      return NextResponse.json({ error: "bad signature" }, { status: 401 });
-  }
+  if (!secret) return NextResponse.json({ error: "webhook not configured" }, { status: 503 });
+  const sig = request.headers.get("x-cal-signature-256") ?? "";
+  const expect = createHmac("sha256", secret).update(raw).digest("hex");
+  if (sig.length !== expect.length || !timingSafeEqual(Buffer.from(sig), Buffer.from(expect)))
+    return NextResponse.json({ error: "bad signature" }, { status: 401 });
   let body: { triggerEvent?: string; payload?: Record<string, unknown> };
   try { body = JSON.parse(raw); } catch { return NextResponse.json({ error: "invalid json" }, { status: 400 }); }
 

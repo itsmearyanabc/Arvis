@@ -3,7 +3,7 @@ Usage: python -I workers/scrape/upload.py results.csv <market_id> <run_id>
 Never writes consumer listings (no category) and never re-inserts an existing place_id."""
 import sys, os, csv, re, json, hashlib
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from common.db import db, finish_run, now_iso
+from common.db import db, finish_run, now_iso, fetch_all
 from common.events import log_event
 
 SOCIAL = {"instagram.com": "instagram_url", "linkedin.com": "linkedin_url", "facebook.com": "facebook_url"}
@@ -13,8 +13,16 @@ JUNK_DOMAINS = ("sentry", "wixpress", "wix.com", "example.com", "domain.com", "e
                 "cloudflare", "jquery", "bootstrap", "fontawesome", "mysite.com", "website.com")
 JUNK_LOCAL = ("noreply", "no-reply", "donotreply", "mailer-daemon", "postmaster", "abuse", "privacy",
               "unsubscribe", "webmaster", "dmarc", "sentry", "u003e", "wixpress")
-GENERIC = ("info", "contact", "hello", "office", "admin", "enquiries", "inquiries", "reception",
-           "frontdesk", "smile", "smiles", "team", "mail", "support", "bookings", "appointments")
+# shared inboxes a business reads (good for first contact), best first
+GENERIC = ("info", "contact", "hello", "hi", "office", "admin", "enquiries", "enquiry", "inquiries", "inquiry",
+           "reception", "frontdesk", "smile", "smiles", "team", "mail", "bookings", "booking", "appointments",
+           "studio", "general", "clinic", "practice")
+# department / role inboxes: never a named person, and the wrong door for a sales email
+ROLE_INBOX = ("career", "careers", "jobs", "job", "hr", "recruit", "recruitment", "hiring", "procurement", "purchasing",
+              "sales", "media", "press", "pr", "marketing", "accounts", "accounting", "billing", "invoice", "invoices",
+              "finance", "support", "help", "helpdesk", "service", "services", "customerservice", "feedback",
+              "complaints", "legal", "compliance", "it", "tech", "webmaster", "web", "design", "projects", "orders",
+              "shop", "store", "noreply", "newsletter", "events", "partnerships", "vendors", "suppliers")
 EMAIL_RE = re.compile(r"^[a-z0-9._%+-]{1,64}@[a-z0-9.-]+\.[a-z]{2,24}$")
 
 def clean_email(e):
@@ -45,8 +53,23 @@ def extras(r):
            "review_excerpts": reviews or None}
     return {k: v for k, v in out.items() if v not in (None, "", [])}
 
+def _local(e):
+    return e.split("@")[0].lower()
+
 def email_quality(e):
-    return "generic" if e.split("@")[0] in GENERIC else "named"
+    """named = looks like a person (john@, john.smith@, jsmith@); otherwise generic."""
+    local = _local(e)
+    base = re.split(r"[.\-_+0-9]", local)[0]
+    if local in GENERIC or local in ROLE_INBOX or base in GENERIC or base in ROLE_INBOX:
+        return "generic"
+    return "named"
+
+def email_rank(e):
+    """Sort key: named people first, then the main shared inbox (info@, contact@), then departments."""
+    local = _local(e); base = re.split(r"[.\-_+0-9]", local)[0]
+    if email_quality(e) == "named": return 0
+    if local in GENERIC or base in GENERIC: return 1 + GENERIC.index(local if local in GENERIC else base) / 100
+    return 2
 
 def to_int(v):
     try: return int(float(v))
@@ -67,14 +90,14 @@ def fit_score(r, market):
     if market["city"].lower() in (r.get("address") or "").lower(): s += 20
     if r.get("category"): s += 15
     name = (r.get("title") or "").lower()
-    if any(k in name for k in ("inc", "group", "corporation", "franchise")): s -= 15
+    if re.search(r"\b(inc|group|corporation|corp|franchise|holdings)\b", name): s -= 15   # whole words only
     return max(0, min(s, 100))
 
 def main():
     path, market_id, run_id = sys.argv[1:4]
     log_event("scrape", "info", "upload started for %s" % market_id, {"run_id": run_id})
     market = db().table("markets").select("*").eq("market_id", market_id).single().execute().data
-    existing = {r["place_id"] for r in db().table("leads").select("place_id").eq("market_id", market_id).execute().data}
+    existing = {r["place_id"] for r in fetch_all(db().table("leads").select("place_id").eq("market_id", market_id).order("place_id"))}
     rows, skipped = [], 0
     with open(path, newline="", encoding="utf-8") as f:
         for r in csv.DictReader(f):
@@ -99,7 +122,7 @@ def main():
             emails = [c for c in (clean_email(e) for e in re.split(r"[,; ]+", r.get("emails") or "")) if c]
             # prefer a named address over a generic one, and the site's own domain over others
             site_dom = re.sub(r"^https?://(www\.)?", "", r.get("website") or "").split("/")[0].lower()
-            emails.sort(key=lambda e: (email_quality(e) != "named", site_dom not in e))
+            emails.sort(key=lambda e: (email_rank(e), site_dom not in e))
             if emails:
                 lead["primary_email"] = emails[0]
                 lead["email_source"] = "website"   # gosom -email reads the business's own site

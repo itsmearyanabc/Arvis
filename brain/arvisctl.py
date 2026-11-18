@@ -46,7 +46,7 @@ def load_env():
                     k, v = line.split("=", 1); os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
             break
 load_env()
-from common.db import db, now_iso
+from common.db import db, now_iso, fetch_all
 from common.niches import group_of, GROUPS, normalize_niche, normalize_country
 from common.events import log_event
 
@@ -65,8 +65,8 @@ def count(table, **filters):
 def cmd_stats(a):
     total = count("leads"); with_email = count("leads", primary_email=("neq", ""))  # neq also excludes nulls
     named = count("leads", contact_quality="named"); generic = count("leads", contact_quality="generic")
-    last24 = count("leads", scraped_at=("gte", ago(24))); last24_email = len([r for r in db().table("leads").select("lead_id").gte("scraped_at", ago(24)).neq("primary_email", "").execute().data])
-    rows = db().table("leads").select("niche,city,primary_email").execute().data
+    last24 = count("leads", scraped_at=("gte", ago(24))); last24_email = count("leads", scraped_at=("gte", ago(24)), primary_email=("neq", ""))
+    rows = fetch_all(db().table("leads").select("niche,city,primary_email").order("lead_id"))
     by_group = collections.Counter(group_of(r["niche"]) for r in rows)
     by_group_email = collections.Counter(group_of(r["niche"]) for r in rows if r["primary_email"])
     markets_active = count("markets", status="active"); markets_done = count("markets", last_scraped_at=("neq", "1970-01-01"))
@@ -102,9 +102,9 @@ def cmd_leads(a):
               + (f" | IG: {r['instagram_url']}" if r.get('instagram_url') else ""))
 
 def cmd_markets(a):
-    ms = db().table("markets").select("market_id,country,city,niche,status,last_scraped_at,businesses_found").order("last_scraped_at", desc=True, nullsfirst=False).execute().data
+    ms = fetch_all(db().table("markets").select("market_id,country,city,niche,status,last_scraped_at,businesses_found").order("last_scraped_at", desc=True, nullsfirst=False).order("market_id"))
     if a.status: ms = [m for m in ms if m["status"] == a.status]
-    counts = collections.Counter(r["market_id"] for r in db().table("leads").select("market_id").execute().data)
+    counts = collections.Counter(r["market_id"] for r in fetch_all(db().table("leads").select("market_id").order("lead_id")))
     if a.json: return print(json.dumps([{**m, "leads": counts[m["market_id"]]} for m in ms], indent=2))
     for m in ms:
         last = m["last_scraped_at"][:16].replace("T", " ") if m["last_scraped_at"] else "never"
@@ -132,7 +132,7 @@ def _sheet_alloc(a, mid):
         return {"sheet_id": sid, "sheet_color": None, "task_label": label}
     color = getattr(a, "color", None)
     if not color:
-        used = [m["sheet_color"] for m in db().table("markets").select("sheet_color").neq("sheet_color", "").execute().data]
+        used = [m["sheet_color"] for m in fetch_all(db().table("markets").select("sheet_color").neq("sheet_color", "").order("market_id"))]
         color = next((c for c in PALETTE if c not in used), PALETTE[hash(mid) % len(PALETTE)])
     return {"sheet_id": None, "sheet_color": color, "task_label": label}
 
@@ -177,10 +177,10 @@ def cmd_dispatch(a):
             a.market, created = add_market(a.country, a.city, a.niche, a)
             print(f"market {a.market} {'added' if created else 'found'}")
         if a.market: inputs["market_id"] = a.market
-        if a.count: inputs["count"] = str(a.count)
+        if a.count: inputs["count"] = str(max(1, min(a.count, 3)))     # never more than 3 markets at once
+    elif a.limit:
+        inputs["limit"] = str(max(1, min(a.limit, 60)))
     if not tok: sys.exit("GITHUB_TOKEN missing in /opt/arvis/.env — cannot start a run now. The market is saved and the nightly schedule (02:00 IST) will pick it up. Ask Aryan to add the GitHub token to enable on-demand runs.")
-    else:
-        if a.limit: inputs["limit"] = str(a.limit)
     body = json.dumps({"ref": "main", "inputs": inputs}).encode()
     req = urllib.request.Request(f"https://api.github.com/repos/{repo}/actions/workflows/{a.worker}.yml/dispatches", data=body, method="POST",
                                  headers={"Authorization": f"Bearer {tok}", "Accept": "application/vnd.github+json", "Content-Type": "application/json"})
@@ -288,7 +288,7 @@ def cmd_email(a):
     sys.exit("email action must be draft, send or check")
 
 def cmd_report(a):
-    rows = db().table("leads").select("niche,city,primary_email,scraped_at,contact_quality").execute().data
+    rows = fetch_all(db().table("leads").select("niche,city,primary_email,scraped_at,contact_quality").order("lead_id"))
     today = now().astimezone(IST).strftime("%a %d %b")
     last24 = [r for r in rows if r["scraped_at"] and r["scraped_at"] >= ago(24)]
     runs = db().table("worker_runs").select("worker,status,counts,error,started_at").gte("started_at", ago(24)).execute().data
@@ -319,7 +319,7 @@ def main():
     am = sp.add_parser("add-market"); am.add_argument("--country"); am.add_argument("--city", required=True); am.add_argument("--niche", required=True)
     am.add_argument("--new-sheet", action="store_true"); am.add_argument("--color"); am.add_argument("--label")
     r = sp.add_parser("runs"); r.add_argument("--limit", type=int, default=10)
-    d = sp.add_parser("dispatch"); d.add_argument("worker", choices=["scrape", "audit"]); d.add_argument("--market"); d.add_argument("--city"); d.add_argument("--niche"); d.add_argument("--country"); d.add_argument("--count", type=int); d.add_argument("--limit", type=int)
+    d = sp.add_parser("dispatch"); d.add_argument("worker", choices=["scrape", "audit", "enrich"]); d.add_argument("--market"); d.add_argument("--city"); d.add_argument("--niche"); d.add_argument("--country"); d.add_argument("--count", type=int); d.add_argument("--limit", type=int)
     d.add_argument("--new-sheet", action="store_true"); d.add_argument("--color"); d.add_argument("--label")
     a = p.parse_args()
     cmdline = " ".join(sys.argv[1:])[:200]; t0 = time.time()

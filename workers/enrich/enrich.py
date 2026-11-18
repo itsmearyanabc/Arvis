@@ -8,10 +8,17 @@ import requests
 from bs4 import BeautifulSoup
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scrape"))
-from common.db import db, start_run, finish_run, now_iso
+from common.db import db, start_run, finish_run, now_iso, fetch_all
 from common.events import log_event
 from common import render
-from upload import clean_email, email_quality
+from upload import clean_email, email_quality, email_rank
+
+ROLE_WORDS = {"founder", "co-founder", "director", "owner", "principal", "partner", "manager", "ceo", "md", "dr", "dentist",
+              "lead", "managing", "practice", "clinic", "senior", "head", "chief", "officer", "president", "team", "our", "the"}
+def clean_name(n):
+    """'Amanda Dsouza Founder' -> 'Amanda Dsouza': drop role words around a scraped name."""
+    words = [w for w in (n or "").replace(",", " ").split() if w.lower().strip(".") not in ROLE_WORDS]
+    return " ".join(words[:3]) or None
 
 UA = "ARVIS-enrich/1.0 (+https://armedias.com; business contact lookup)"
 PAGES = ["", "/contact", "/contact-us", "/about", "/about-us", "/team", "/our-team", "/meet-the-team"]
@@ -97,11 +104,13 @@ def enrich(lead, hunter_left):
     root = site_root(lead.get("website"))
     emails, people, socials = set(), [], {}
     dom = re.sub(r"^https?://(www\.)?", "", root or "").split("/")[0].lower()
+    email_src = {}                                # email -> where it was found
     if root:
         for i, p in enumerate(PAGES[:5]):
             h = fetch(root + p, browser=(i < 2))      # browser only for home + first contact page
             if not h: continue
             e, pe, so = extract(h, dom); emails |= e; people += pe; socials = {**so, **socials}
+            for x in e: email_src.setdefault(x, "website")
             time.sleep(random.uniform(1, 3))
     # public search: owner name + sometimes an email in the snippet
     for title, desc, url in web_search(f'"{lead["business_name"]}" {lead.get("city","")} owner OR founder OR director'):
@@ -109,40 +118,47 @@ def enrich(lead, hunter_left):
             continue
         for e in re.findall(r"[\w.+-]+@[\w-]+\.[\w.-]+", desc):
             c = clean_email(e)
-            if c and (dom and dom in c): emails.add(c)
+            if c and (dom and dom in c): emails.add(c); email_src.setdefault(c, "web_search")
         for m in ROLE_RE.finditer(desc):
             for n in NAME_RE.findall(desc[max(0, m.start()-60): m.end()+60]): people.append((n, m.group(1), "web_search"))
     used_hunter = False
     if dom and hunter_left > 0 and (lead.get("ticket_score") or 0) >= 70 and not any(email_quality(e) == "named" for e in emails):
         for value, name, pos, conf in hunter_domain(dom):
             c = clean_email(value)
-            if c: emails.add(c); people.append((name.strip() or None, pos, "hunter"))
+            if c: emails.add(c); email_src.setdefault(c, "hunter"); people.append((name.strip() or None, pos, "hunter"))
         used_hunter = True
     # rank: named + own domain first
-    ranked = sorted(emails, key=lambda e: (email_quality(e) != "named", dom not in e))
+    ranked = sorted(emails, key=lambda e: (email_rank(e), dom not in e))
     # best person
     best_person = None
-    for n, role, src in people:
-        if n and len(n.split()) >= 2 and len(n) < 50: best_person = (n, role, src); break
-    return ranked, best_person, socials, used_hunter
+    for n, role, origin in people:
+        n = clean_name(n)
+        if n and len(n.split()) >= 2 and len(n) < 50: best_person = (n, role, origin); break
+    return ranked, best_person, socials, used_hunter, email_src
 
 def main():
     limit = int(sys.argv[1]) if len(sys.argv) > 1 else 30
     run_id = start_run("enrich", {"limit": limit, "search": "google" if GCSE_KEY and GCSE_ID else ("brave" if BRAVE else "none"), "hunter": bool(HUNTER)})
     log_event("audit", "info", f"enrich run started (limit {limit})")
     # audited businesses not yet enriched (= no contacts rows yet); verify later moves them to verified/parked
-    have = {c["lead_id"] for c in db().table("contacts").select("lead_id").execute().data}
-    leads = [l for l in db().table("leads").select("*").eq("status", "audited").order("ticket_score", desc=True).limit(limit * 3).execute().data
-             if l["lead_id"] not in have][:limit]
+    # all audited ids (paged), minus those already enriched -> best `limit` by ticket score
+    have = {c["lead_id"] for c in fetch_all(db().table("contacts").select("lead_id").order("contact_id"))}
+    cand = [l for l in fetch_all(db().table("leads").select("lead_id,ticket_score").eq("status", "audited").order("lead_id"))
+            if l["lead_id"] not in have]
+    pick = [l["lead_id"] for l in sorted(cand, key=lambda l: -(l["ticket_score"] or 0))[:limit]]
+    leads = db().table("leads").select("*").in_("lead_id", pick).execute().data if pick else []
+    leads.sort(key=lambda l: -(l["ticket_score"] or 0))
+    failed = []
     hunter_left, found_named, found_any, done = HUNTER_BUDGET, 0, 0, 0
     try:
         for lead in leads:
-            ranked, person, socials, used_h = enrich(lead, hunter_left)
+          try:                                       # one odd site must never stop the whole run
+            ranked, person, socials, used_h, src = enrich(lead, hunter_left)
             if used_h: hunter_left -= 1
             rows = []
             for e in ranked[:3]:
                 rows.append({"lead_id": lead["lead_id"], "email": e, "email_status": "unknown",
-                             "email_source": "website",
+                             "email_source": src.get(e, "website"),
                              "contact_quality": email_quality(e),
                              "contact_name": person[0] if person and email_quality(e) == "named" else None,
                              "role": person[1] if person and email_quality(e) == "named" else None})
@@ -154,16 +170,19 @@ def main():
                 if email_quality(ranked[0]) == "named": found_named += 1
             upd = {k: v for k, v in socials.items() if v and not lead.get(k)}
             if ranked and (not lead.get("primary_email") or (email_quality(ranked[0]) == "named" and lead.get("contact_quality") != "named")):
-                upd.update({"primary_email": ranked[0], "email_source": "website", "contact_quality": email_quality(ranked[0])})
+                upd.update({"primary_email": ranked[0], "email_source": src.get(ranked[0], "website"), "contact_quality": email_quality(ranked[0])})
             if person and not (lead.get("notes") or "").startswith("owner:"):
                 upd["notes"] = f"owner: {person[0]} ({person[1]})" + (f" | {lead['notes']}" if lead.get("notes") else "")
             if not ranked: upd.update({"status": "parked", "parked_reason": "no_email"})
             upd["updated_at"] = now_iso()
             db().table("leads").update(upd).eq("lead_id", lead["lead_id"]).execute()
             done += 1
-            time.sleep(random.uniform(3, 8))
+          except Exception as e:
+            failed.append(f"{lead['lead_id']}: {str(e)[:120]}"); print("enrich skipped", lead["lead_id"], e)
+          time.sleep(random.uniform(3, 8))
         render.close()
-        finish_run(run_id, {"processed": done, "with_email": found_any, "named": found_named, "hunter_used": HUNTER_BUDGET - hunter_left})
+        finish_run(run_id, {"processed": done, "failed": len(failed), "with_email": found_any, "named": found_named, "hunter_used": HUNTER_BUDGET - hunter_left},
+                   error=("; ".join(failed[:5]) if failed and not done else None))
         log_event("audit", "info", f"enrich done: {done} processed, {found_any} with email, {found_named} named")
     except Exception as e:
         finish_run(run_id, {"processed": done}, error=str(e)); log_event("audit", "error", f"enrich failed: {e}"); raise
