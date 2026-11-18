@@ -18,8 +18,8 @@ import re as _re
 def _sheet_id(v):
     """Accept the bare id or the whole Google Sheets URL (people paste the URL)."""
     v = (v or "").strip()
-    m = _re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]{20,})", v)
-    return m.group(1) if m else (v or None)
+    m = _re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]{20,})", v) or _re.search(r"([a-zA-Z0-9_-]{30,})", v)
+    return m.group(1) if m else (v or None)   # first id wins (a duplicated .env line once stored two)
 
 def _client():
     raw = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON"); sid = _sheet_id(os.environ.get("GOOGLE_SHEET_ID"))
